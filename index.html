@@ -3,16 +3,16 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Backrooms Infinite</title>
+    <title>Backrooms - Collision Update</title>
     <style>
         body { margin: 0; overflow: hidden; background: #000; touch-action: none; font-family: sans-serif; }
-        #ui { position: absolute; top: 20px; left: 20px; color: #ffff00; z-index: 5; text-shadow: 1px 1px #000; pointer-events: none; }
+        #ui { position: absolute; top: 20px; left: 20px; color: #ffff00; z-index: 5; text-shadow: 1px 1px #000; pointer-events: none; font-size: 14px; }
         #joy-base { position: absolute; width: 100px; height: 100px; background: rgba(255,255,255,0.1); border: 2px solid rgba(255,255,255,0.2); border-radius: 50%; display: none; }
         #joy-knob { position: absolute; width: 40px; height: 40px; background: rgba(255,255,255,0.4); border-radius: 50%; left: 30px; top: 30px; }
     </style>
 </head>
 <body>
-    <div id="ui">LEVEL 0<br>テクスチャ：wallpaper.jpg<br>視点：左右反転</div>
+    <div id="ui">LEVEL 0<br>壁の当たり判定を実装しました</div>
     <div id="joy-base"><div id="joy-knob"></div></div>
 
     <script type="importmap">
@@ -22,12 +22,12 @@
     <script type="module">
         import * as THREE from 'three';
 
-        // --- 基本設定 ---
+        // --- 設定 ---
         const GRID_SIZE = 6;
-        const VIEW = 7; 
+        const VIEW = 7;
         const scene = new THREE.Scene();
         scene.background = new THREE.Color(0x1a1a05);
-        scene.fog = new THREE.Fog(0x1a1a05, 1, 30);
+        scene.fog = new THREE.Fog(0x1a1a05, 1, 25);
 
         const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
         camera.position.set(0, 1.6, 0);
@@ -41,29 +41,27 @@
         const pLight = new THREE.PointLight(0xffffcc, 1.5, 15);
         scene.add(pLight);
 
-        // --- テクスチャ設定 ---
+        // --- テクスチャ ---
         const loader = new THREE.TextureLoader();
-        // 画像名を「wallpaper.jpg」として読み込み
         const wallTex = loader.load('wallpaper.jpg', (tex) => {
             tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
             tex.repeat.set(2, 1);
             tex.anisotropy = 4;
         });
 
-        // 画像がロードされるまで色（color）で見えるように設定
         const wallMat = new THREE.MeshStandardMaterial({ map: wallTex, color: 0xd9c585 });
         const floorMat = new THREE.MeshStandardMaterial({ color: 0x8e7e4d });
         const ceilingMat = new THREE.MeshStandardMaterial({ color: 0xeeeecc });
 
         const floor = new THREE.Mesh(new THREE.PlaneGeometry(150, 150), floorMat);
         floor.rotation.x = -Math.PI/2; scene.add(floor);
-
         const ceiling = new THREE.Mesh(new THREE.PlaneGeometry(150, 150), ceilingMat);
         ceiling.rotation.x = Math.PI/2; ceiling.position.y = 4; scene.add(ceiling);
 
-        // --- 無限生成システム ---
+        // --- 無限生成 & 当たり判定用データ ---
         const chunks = new Map();
-        const wallGeo = new THREE.BoxGeometry(GRID_SIZE, 4, 0.2);
+        const walls = []; // 判定対象の壁リスト
+        const wallGeo = new THREE.BoxGeometry(GRID_SIZE, 4, 0.4); // 判定しやすいよう少し厚めに
 
         function pseudoRandom(x, z) {
             const f = Math.sin(x * 12.9898 + z * 78.233) * 43758.5453;
@@ -79,34 +77,37 @@
                     const key = `${x},${z}`;
                     if (!chunks.has(key)) {
                         const rnd = pseudoRandom(x, z);
-                        // 30%の確率で壁を生成 (開始地点の周囲は除外)
                         if (rnd < 0.3 && (Math.abs(x) > 1 || Math.abs(z) > 1)) {
                             const wall = new THREE.Mesh(wallGeo, wallMat);
                             wall.position.set(x * GRID_SIZE, 2, z * GRID_SIZE);
-                            // 縦横ランダムに回転
                             wall.rotation.y = pseudoRandom(z, x) > 0.5 ? 0 : Math.PI/2;
                             scene.add(wall);
                             chunks.set(key, wall);
+                            walls.push(wall);
                         } else {
                             chunks.set(key, null);
                         }
                     }
                 }
             }
-            // 遠方のチャンクを削除（重くならないように）
+
+            // 削除
             for (let [key, wall] of chunks) {
                 const [cx, cz] = key.split(',').map(Number);
                 if (Math.abs(cx - px) > VIEW + 1 || Math.abs(cz - pz) > VIEW + 1) {
-                    if (wall) scene.remove(wall);
+                    if (wall) {
+                        scene.remove(wall);
+                        const idx = walls.indexOf(wall);
+                        if(idx > -1) walls.splice(idx, 1);
+                    }
                     chunks.delete(key);
                 }
             }
-            // 床と天井をプレイヤーに追従
             floor.position.set(camera.position.x, 0, camera.position.z);
             ceiling.position.set(camera.position.x, 4, camera.position.z);
         }
 
-        // --- 操作系（左右反転・上下通常） ---
+        // --- 操作系 ---
         let moveID = null, lookID = null;
         let moveData = { x: 0, y: 0, startX: 0, startY: 0 }, lookData = { lastX: 0, lastY: 0 };
         let lon = 0, lat = 0, targetLon = 0, targetLat = 0;
@@ -133,8 +134,8 @@
                     joyKnob.style.transform = `translate(${Math.cos(a)*d}px, ${Math.sin(a)*d}px)`;
                 }
                 if(t.identifier === lookID) {
-                    targetLon -= (t.clientX - lookData.lastX) * 0.3; // 左右反転
-                    targetLat -= (t.clientY - lookData.lastY) * 0.3; // 上下通常
+                    targetLon -= (t.clientX - lookData.lastX) * 0.3;
+                    targetLat -= (t.clientY - lookData.lastY) * 0.3;
                     targetLat = Math.max(-85, Math.min(85, targetLat));
                     lookData.lastX = t.clientX; lookData.lastY = t.clientY;
                 }
@@ -148,33 +149,52 @@
             }
         });
 
-        // --- ループ ---
+        // --- 移動 & 衝突判定 ---
         const dir = new THREE.Vector3(), side = new THREE.Vector3(), up = new THREE.Vector3(0,1,0);
+        const playerBox = new THREE.Box3();
+        const wallBox = new THREE.Box3();
+
+        function checkCollision(pos) {
+            // プレイヤーを 0.6m 四方の箱として判定
+            playerBox.setFromCenterAndSize(pos, new THREE.Vector3(0.6, 2, 0.6));
+            for (let wall of walls) {
+                wallBox.setFromObject(wall);
+                if (playerBox.intersectsBox(wallBox)) return true;
+            }
+            return false;
+        }
+
         function animate() {
             requestAnimationFrame(animate);
-            // 視点のスムージング
             lon += (targetLon - lon) * 0.2; lat += (targetLat - lat) * 0.2;
             const phi = THREE.MathUtils.degToRad(90-lat), theta = THREE.MathUtils.degToRad(lon);
             const lookPos = new THREE.Vector3();
             lookPos.setFromSphericalCoords(1, phi, theta).add(camera.position);
             camera.lookAt(lookPos);
 
-            // 移動計算
             if(moveID !== null) {
                 camera.getWorldDirection(dir); dir.y = 0; dir.normalize();
                 side.crossVectors(up, dir).normalize();
-                camera.position.addScaledVector(dir, -moveData.y*0.14).addScaledVector(side, -moveData.x*0.14);
+                
+                // 次の移動位置を計算
+                const moveStep = new THREE.Vector3().addScaledVector(dir, -moveData.y*0.13).addScaledVector(side, -moveData.x*0.13);
+                
+                // X軸方向のチェック
+                const nextPosX = camera.position.clone();
+                nextPosX.x += moveStep.x;
+                if(!checkCollision(nextPosX)) camera.position.x = nextPosX.x;
+
+                // Z軸方向のチェック
+                const nextPosZ = camera.position.clone();
+                nextPosZ.z += moveStep.z;
+                if(!checkCollision(nextPosZ)) camera.position.z = nextPosZ.z;
             }
+
             pLight.position.copy(camera.position);
             updateWorld();
             renderer.render(scene, camera);
         }
         animate();
-
-        window.addEventListener('resize', () => {
-            camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix();
-            renderer.setSize(window.innerWidth, window.innerHeight);
-        });
     </script>
 </body>
 </html>
