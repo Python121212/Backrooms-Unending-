@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Backrooms - Inverted Controls</title>
+    <title>Backrooms - Horizontal Invert Only</title>
     <style>
         body { margin: 0; overflow: hidden; background: #1a1a00; touch-action: none; font-family: sans-serif; }
         canvas { display: block; }
@@ -14,7 +14,7 @@
     </style>
 </head>
 <body>
-    <div id="ui">LEVEL 0<br>視点操作：リバース（反転）設定</div>
+    <div id="ui">LEVEL 0<br>操作：左右のみ反転 / 上下は通常</div>
     <div id="crosshair">+</div>
     <div id="joy-base"><div id="joy-knob"></div></div>
 
@@ -46,7 +46,7 @@
         const light = new THREE.PointLight(0xffffcc, 1.5, 15);
         scene.add(light);
 
-        // --- テクスチャ & 床 ---
+        // --- 質感 ---
         const createTex = (c) => {
             const cv = document.createElement('canvas'); cv.width = 128; cv.height = 128;
             const cx = cv.getContext('2d'); cx.fillStyle = c; cx.fillRect(0,0,128,128);
@@ -58,7 +58,7 @@
         floor.rotation.x = -Math.PI / 2;
         scene.add(floor);
 
-        // --- 無限生成 ---
+        // --- 無限生成ロジック ---
         const chunks = new Map();
         const wallGeo = new THREE.BoxGeometry(GRID_SIZE, 4, 0.8);
 
@@ -100,7 +100,7 @@
             floor.position.z = camera.position.z;
         }
 
-        // --- 操作系 (リバース視点対応) ---
+        // --- 操作系 ---
         let moveTouchID = null, lookTouchID = null;
         let moveData = { x: 0, y: 0, startX: 0, startY: 0 };
         let lookData = { lastX: 0, lastY: 0 };
@@ -131,9 +131,9 @@
                     const deltaX = t.clientX - lookData.lastX;
                     const deltaY = t.clientY - lookData.lastY;
                     
-                    // --- リバース操作の核心 ---
-                    targetLon -= deltaX * 0.3; // 左右反転
-                    targetLat += deltaY * 0.3; // 上下反転
+                    // 左右のみ反転、上下は通常
+                    targetLon -= deltaX * 0.3; 
+                    targetLat -= deltaY * 0.3; 
                     
                     targetLat = Math.max(-85, Math.min(85, targetLat));
                     lookData.lastX = t.clientX; lookData.lastY = t.clientY;
@@ -148,7 +148,7 @@
             }
         });
 
-        // --- 更新ループ ---
+        // --- ループ ---
         const dir = new THREE.Vector3(), side = new THREE.Vector3(), up = new THREE.Vector3(0,1,0);
         function animate() {
             requestAnimationFrame(animate);
