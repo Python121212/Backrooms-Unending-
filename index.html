@@ -3,16 +3,16 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Backrooms - Lights Back</title>
+    <title>Backrooms - Lite Edition</title>
     <style>
         body { margin: 0; overflow: hidden; background: #000; touch-action: none; font-family: sans-serif; }
-        #ui { position: absolute; top: 20px; left: 20px; color: #ffff00; z-index: 5; text-shadow: 1px 1px #000; pointer-events: none; font-size: 12px; }
-        #joy-base { position: absolute; width: 100px; height: 100px; background: rgba(255,255,255,0.1); border: 2px solid rgba(255,255,255,0.2); border-radius: 50%; display: none; }
-        #joy-knob { position: absolute; width: 40px; height: 40px; background: rgba(255,255,255,0.4); border-radius: 50%; left: 30px; top: 30px; }
+        #ui { position: absolute; top: 20px; left: 20px; color: #ffff00; z-index: 5; text-shadow: 1px 1px #000; pointer-events: none; font-size: 10px; opacity: 0.7; }
+        #joy-base { position: absolute; width: 80px; height: 80px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 50%; display: none; }
+        #joy-knob { position: absolute; width: 30px; height: 30px; background: rgba(255,255,255,0.2); border-radius: 50%; left: 25px; top: 25px; }
     </style>
 </head>
 <body>
-    <div id="ui">LEVEL 0<br>蛍光灯を再配置し、照明を強化しました。</div>
+    <div id="ui">LEVEL 0<br>【軽量化版】動作速度を優先しました。</div>
     <div id="joy-base"><div id="joy-knob"></div></div>
 
     <script type="importmap">
@@ -23,47 +23,39 @@
         import * as THREE from 'three';
 
         const GRID_SIZE = 5;
-        const VIEW = 8;
+        const VIEW = 5; // 描画範囲を8→5に縮小（劇的に軽くなります）
         const scene = new THREE.Scene();
         scene.background = new THREE.Color(0x1a1a05);
-        scene.fog = new THREE.Fog(0x1a1a05, 1, 15);
+        scene.fog = new THREE.Fog(0x1a1a05, 1, 12); // 霧をさらに手前に
 
-        const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.2, 50);
         camera.position.set(0, 1.6, 0);
 
-        const renderer = new THREE.WebGLRenderer({ antialias: false });
+        const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: "high-performance" });
         renderer.setSize(window.innerWidth, window.innerHeight);
-        renderer.setPixelRatio(1);
+        renderer.setPixelRatio(1); // 解像度を抑えて速度優先
         document.body.appendChild(renderer.domElement);
 
-        // 全体の明るさを少し下げて、蛍光灯の光を際立たせる
-        scene.add(new THREE.AmbientLight(0xffffff, 0.25));
-        
-        // プレイヤーの周囲を照らすライト（補助）
-        const pLight = new THREE.PointLight(0xffffcc, 1.5, 8);
+        scene.add(new THREE.AmbientLight(0xffffff, 0.4));
+        const pLight = new THREE.PointLight(0xffffcc, 2.0, 10);
         scene.add(pLight);
 
         const loader = new THREE.TextureLoader();
-        const wallTex = loader.load('wallpaper.jpg', (tex) => {
-            tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-            tex.repeat.set(1.5, 1.2);
-        });
+        const wallTex = loader.load('wallpaper.jpg'); //
 
         const wallMat = new THREE.MeshStandardMaterial({ map: wallTex, color: 0xd9c585 });
         const floorMat = new THREE.MeshStandardMaterial({ color: 0x7e6e3d });
         const ceilingMat = new THREE.MeshStandardMaterial({ color: 0xeeeecc });
-        
-        // 蛍光灯自体の光る質感
         const lightMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
 
-        const floor = new THREE.Mesh(new THREE.PlaneGeometry(500, 500), floorMat);
+        const floor = new THREE.Mesh(new THREE.PlaneGeometry(100, 100), floorMat);
         floor.rotation.x = -Math.PI/2; scene.add(floor);
-        const ceiling = new THREE.Mesh(new THREE.PlaneGeometry(500, 500), ceilingMat);
+        const ceiling = new THREE.Mesh(new THREE.PlaneGeometry(100, 100), ceilingMat);
         ceiling.rotation.x = Math.PI/2; ceiling.position.y = 3.8; scene.add(ceiling);
 
         const chunks = new Map();
-        const colliders = [];
-        const wallGeo = new THREE.BoxGeometry(GRID_SIZE + 0.4, 3.8, 0.6);
+        let colliders = [];
+        const wallGeo = new THREE.BoxGeometry(GRID_SIZE + 0.2, 3.8, 0.5);
 
         function pseudoRandom(x, z) {
             const f = Math.sin(x * 12.9898 + z * 78.233) * 43758.5453;
@@ -79,43 +71,42 @@
                     const key = `${x},${z}`;
                     if (!chunks.has(key)) {
                         const group = new THREE.Group();
-                        
-                        // 初期地点の空地
                         if (Math.abs(x) < 2 && Math.abs(z) < 2) {
-                            chunks.set(key, null);
-                            continue;
+                            chunks.set(key, null); continue;
                         }
-
-                        // 【修正】蛍光灯を3グリッドおきに必ず配置
-                        if (x % 3 === 0 && z % 3 === 0) {
-                            const l = new THREE.Mesh(new THREE.PlaneGeometry(1.5, 0.7), lightMat);
+                        if (x % 4 === 0 && z % 4 === 0) {
+                            const l = new THREE.Mesh(new THREE.PlaneGeometry(1.2, 0.6), lightMat);
                             l.position.set(x * GRID_SIZE, 3.79, z * GRID_SIZE);
                             l.rotation.x = Math.PI/2;
                             group.add(l);
-
-                            // 天井の光を床に落とすライト
-                            const point = new THREE.PointLight(0xffffdd, 0.8, 7);
-                            point.position.set(x * GRID_SIZE, 3.5, z * GRID_SIZE);
-                            group.add(point);
                         }
-
-                        // 壁の生成（密度40%）
                         if (pseudoRandom(x, z) < 0.4) {
                             const w = new THREE.Mesh(wallGeo, wallMat);
                             w.position.set(x * GRID_SIZE, 1.9, z * GRID_SIZE);
                             w.rotation.y = pseudoRandom(z, x) > 0.5 ? 0 : Math.PI/2;
                             group.add(w);
-                            colliders.push(w);
                         }
-
                         scene.add(group);
                         chunks.set(key, group);
                     }
                 }
             }
+
+            // 当たり判定用リストを近くのものだけに更新
+            colliders = [];
+            for (let [key, group] of chunks) {
+                const [cx, cz] = key.split(',').map(Number);
+                if (Math.abs(cx - px) > VIEW || Math.abs(cz - pz) > VIEW) {
+                    if (group) scene.remove(group);
+                    chunks.delete(key);
+                } else if (group && Math.abs(cx - px) <= 1 && Math.abs(cz - pz) <= 1) {
+                    group.children.forEach(c => { if(c.type === "Mesh" && c.geometry.type === "BoxGeometry") colliders.push(c); });
+                }
+            }
+            floor.position.set(camera.position.x, 0, camera.position.z);
+            ceiling.position.set(camera.position.x, 3.8, camera.position.z);
         }
 
-        // --- 操作系（スライド移動） ---
         let moveID = null, lookID = null;
         let moveData = { x: 0, y: 0, startX: 0, startY: 0 }, lookData = { lastX: 0, lastY: 0 };
         let lon = 0, lat = 0, targetLon = 0, targetLat = 0;
@@ -125,7 +116,7 @@
             for(let t of e.changedTouches) {
                 if(t.clientX < window.innerWidth/2 && moveID === null) {
                     moveID = t.identifier; moveData.startX = t.clientX; moveData.startY = t.clientY;
-                    joyBase.style.display = 'block'; joyBase.style.left = (t.clientX-50)+'px'; joyBase.style.top = (t.clientY-50)+'px';
+                    joyBase.style.display = 'block'; joyBase.style.left = (t.clientX-40)+'px'; joyBase.style.top = (t.clientY-40)+'px';
                 } else if(t.clientX >= window.innerWidth/2 && lookID === null) {
                     lookID = t.identifier; lookData.lastX = t.clientX; lookData.lastY = t.clientY;
                 }
@@ -137,8 +128,8 @@
             for(let t of e.touches) {
                 if(t.identifier === moveID) {
                     let dx = t.clientX - moveData.startX, dy = t.clientY - moveData.startY;
-                    const d = Math.min(Math.sqrt(dx*dx+dy*dy), 40), a = Math.atan2(dy,dx);
-                    moveData.x = Math.cos(a)*(d/40); moveData.y = Math.sin(a)*(d/40);
+                    const d = Math.min(Math.sqrt(dx*dx+dy*dy), 35), a = Math.atan2(dy,dx);
+                    moveData.x = Math.cos(a)*(d/35); moveData.y = Math.sin(a)*(d/35);
                     joyKnob.style.transform = `translate(${Math.cos(a)*d}px, ${Math.sin(a)*d}px)`;
                 }
                 if(t.identifier === lookID) {
@@ -171,7 +162,7 @@
         const dir = new THREE.Vector3(), side = new THREE.Vector3(), up = new THREE.Vector3(0,1,0);
         function animate() {
             requestAnimationFrame(animate);
-            lon += (targetLon - lon) * 0.2; lat += (targetLat - lat) * 0.2;
+            lon += (targetLon - lon) * 0.15; lat += (targetLat - lat) * 0.15;
             camera.lookAt(new THREE.Vector3().setFromSphericalCoords(1, THREE.MathUtils.degToRad(90-lat), THREE.MathUtils.degToRad(lon)).add(camera.position));
 
             if(moveID !== null) {
