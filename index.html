@@ -3,32 +3,18 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Backrooms FPS - Stable Controls</title>
+    <title>Backrooms FPS - Smooth Camera</title>
     <style>
         body { margin: 0; overflow: hidden; background: #222; touch-action: none; font-family: sans-serif; }
         canvas { display: block; }
-        
-        /* ジョイスティックの土台 */
-        #joy-base {
-            position: absolute; width: 120px; height: 120px;
-            background: rgba(255, 255, 255, 0.1);
-            border: 2px solid rgba(255, 255, 255, 0.2);
-            border-radius: 50%; display: none; pointer-events: none;
-            z-index: 10;
-        }
-        /* スティックのつまみ */
-        #joy-knob {
-            position: absolute; width: 50px; height: 50px;
-            background: rgba(255, 255, 255, 0.4);
-            border-radius: 50%; left: 35px; top: 35px;
-        }
-
+        #joy-base { position: absolute; width: 120px; height: 120px; background: rgba(255, 255, 255, 0.1); border: 2px solid rgba(255, 255, 255, 0.2); border-radius: 50%; display: none; pointer-events: none; z-index: 10; }
+        #joy-knob { position: absolute; width: 50px; height: 50px; background: rgba(255, 255, 255, 0.4); border-radius: 50%; left: 35px; top: 35px; }
         #ui { position: absolute; top: 20px; left: 20px; color: #ffff00; pointer-events: none; text-shadow: 1px 1px #000; font-weight: bold; z-index: 5; }
         #crosshair { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: rgba(255,255,255,0.3); pointer-events: none; font-size: 24px; }
     </style>
 </head>
 <body>
-    <div id="ui">LEVEL 0<br>左半分: 移動専用 / 右半分: 視点専用</div>
+    <div id="ui">LEVEL 0<br>視点を「滑らか」に調整しました</div>
     <div id="crosshair">+</div>
     <div id="joy-base"><div id="joy-knob"></div></div>
 
@@ -39,7 +25,7 @@
     <script type="module">
         import * as THREE from 'three';
 
-        // --- シーン・カメラ・レンダラー ---
+        // --- シーン構築 ---
         const scene = new THREE.Scene();
         scene.background = new THREE.Color(0x2a2a15);
         scene.fog = new THREE.Fog(0x2a2a15, 1, 45);
@@ -52,12 +38,11 @@
         renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
         document.body.appendChild(renderer.domElement);
 
-        // --- 照明 ---
         scene.add(new THREE.AmbientLight(0xffffee, 0.7));
         const light = new THREE.PointLight(0xffffcc, 1.2, 18);
         scene.add(light);
 
-        // --- 簡易テクスチャ生成 ---
+        // --- マテリアル・マップ ---
         const createTex = (c) => {
             const cv = document.createElement('canvas'); cv.width = 128; cv.height = 128;
             const cx = cv.getContext('2d'); cx.fillStyle = c; cx.fillRect(0,0,128,128);
@@ -65,12 +50,9 @@
             return new THREE.CanvasTexture(cv);
         };
         const wallMat = new THREE.MeshStandardMaterial({ map: createTex('#d9c585'), roughness: 0.8 });
-        
-        // 床
         const floor = new THREE.Mesh(new THREE.PlaneGeometry(1000, 1000), new THREE.MeshStandardMaterial({ map: createTex('#8e7e4d'), roughness: 0.9 }));
         floor.rotation.x = -Math.PI / 2; scene.add(floor);
 
-        // 壁の配置
         const walls = [];
         const wallGeo = new THREE.BoxGeometry(6, 4, 0.8);
         for(let i=0; i<60; i++) {
@@ -84,37 +66,32 @@
             walls.push(wall);
         }
 
-        // --- 厳格な分離操作システム ---
+        // --- 操作システム (視点スムージング版) ---
         const joyBase = document.getElementById('joy-base');
         const joyKnob = document.getElementById('joy-knob');
         
-        // 移動と視点のタッチIDを完全に分ける
         let moveTouchID = null;
         let lookTouchID = null;
         
         let moveData = { x: 0, y: 0, startX: 0, startY: 0 };
-        let lookData = { lastX: 0, lastY: 0 };
-        let lat = 0, lon = 0;
+        
+        // 視点計算用の変数
+        let lon = 0, lat = 0;
+        let targetLon = 0, targetLat = 0; // 目標値
+        const lerpFactor = 0.15; // スムージングの強さ（小さいほどヌルヌル動く）
 
         window.addEventListener('touchstart', (e) => {
             for(let t of e.changedTouches) {
-                const isLeftHalf = t.clientX < window.innerWidth / 2;
-                
-                // 左半分かつ移動タッチがまだない場合
-                if(isLeftHalf && moveTouchID === null) {
+                if(t.clientX < window.innerWidth / 2 && moveTouchID === null) {
                     moveTouchID = t.identifier;
-                    moveData.startX = t.clientX;
-                    moveData.startY = t.clientY;
-                    
+                    moveData.startX = t.clientX; moveData.startY = t.clientY;
                     joyBase.style.display = 'block';
-                    joyBase.style.left = `${t.clientX - 60}px`;
-                    joyBase.style.top = `${t.clientY - 60}px`;
-                } 
-                // 右半分かつ視点タッチがまだない場合
-                else if(!isLeftHalf && lookTouchID === null) {
+                    joyBase.style.left = `${t.clientX - 60}px`; joyBase.style.top = `${t.clientY - 60}px`;
+                } else if(t.clientX >= window.innerWidth / 2 && lookTouchID === null) {
                     lookTouchID = t.identifier;
-                    lookData.lastX = t.clientX;
-                    lookData.lastY = t.clientY;
+                    // タッチ開始時の位置を保存
+                    lookTouchID.lastX = t.clientX;
+                    lookTouchID.lastY = t.clientY;
                 }
             }
         }, { passive: false });
@@ -123,29 +100,26 @@
             e.preventDefault();
             for(let t of e.changedTouches) {
                 if(t.identifier === moveTouchID) {
-                    // 移動計算
                     let dx = t.clientX - moveData.startX;
                     let dy = t.clientY - moveData.startY;
-                    const maxDist = 50;
-                    const dist = Math.min(Math.sqrt(dx*dx + dy*dy), maxDist);
+                    const dist = Math.min(Math.sqrt(dx*dx + dy*dy), 50);
                     const angle = Math.atan2(dy, dx);
-                    
-                    moveData.x = Math.cos(angle) * (dist / maxDist);
-                    moveData.y = Math.sin(angle) * (dist / maxDist);
-                    
+                    moveData.x = Math.cos(angle) * (dist / 50);
+                    moveData.y = Math.sin(angle) * (dist / 50);
                     joyKnob.style.transform = `translate(${Math.cos(angle)*dist}px, ${Math.sin(angle)*dist}px)`;
                 } 
                 else if(t.identifier === lookTouchID) {
-                    // 視点計算
-                    const deltaX = t.clientX - lookData.lastX;
-                    const deltaY = t.clientY - lookData.lastY;
+                    // 直前のフレームからの差分を取得
+                    const deltaX = t.clientX - (lookTouchID.lastX || t.clientX);
+                    const deltaY = t.clientY - (lookTouchID.lastY || t.clientY);
                     
-                    lon += deltaX * 0.2;
-                    lat -= deltaY * 0.2;
-                    lat = Math.max(-85, Math.min(85, lat));
+                    // 目標値を更新
+                    targetLon += deltaX * 0.25; // 感度調整
+                    targetLat -= deltaY * 0.25;
+                    targetLat = Math.max(-85, Math.min(85, targetLat));
                     
-                    lookData.lastX = t.clientX;
-                    lookData.lastY = t.clientY;
+                    lookTouchID.lastX = t.clientX;
+                    lookTouchID.lastY = t.clientY;
                 }
             }
         }, { passive: false });
@@ -153,8 +127,7 @@
         window.addEventListener('touchend', (e) => {
             for(let t of e.changedTouches) {
                 if(t.identifier === moveTouchID) {
-                    moveTouchID = null;
-                    moveData.x = 0; moveData.y = 0;
+                    moveTouchID = null; moveData.x = 0; moveData.y = 0;
                     joyBase.style.display = 'none';
                     joyKnob.style.transform = `translate(0px, 0px)`;
                 } else if(t.identifier === lookTouchID) {
@@ -170,20 +143,14 @@
 
         function updateMovement() {
             if(moveTouchID === null) return;
-
             const speed = 0.12;
             camera.getWorldDirection(dir);
             dir.y = 0; dir.normalize();
             side.crossVectors(up, dir).normalize();
-
-            // 前後・左右の合成
             const step = new THREE.Vector3()
                 .addScaledVector(dir, -moveData.y * speed)
                 .addScaledVector(side, -moveData.x * speed);
-
             const nextPos = camera.position.clone().add(step);
-            
-            // 衝突判定
             const pBox = new THREE.Box3().setFromCenterAndSize(nextPos, new THREE.Vector3(0.7, 2, 0.7));
             let hit = false;
             for(let w of walls) {
@@ -197,14 +164,16 @@
         function animate() {
             requestAnimationFrame(animate);
 
-            // 視点の適用
+            // 【ここがポイント】Lerp（線形補間）で滑らかに追従させる
+            lon += (targetLon - lon) * lerpFactor;
+            lat += (targetLat - lat) * lerpFactor;
+
             const phi = THREE.MathUtils.degToRad(90 - lat);
             const theta = THREE.MathUtils.degToRad(lon);
             target.setFromSphericalCoords(1, phi, theta).add(camera.position);
             camera.lookAt(target);
 
             updateMovement();
-            
             camera.position.y = 1.6;
             light.position.copy(camera.position);
 
