@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Backrooms - Clean Lights</title>
+    <title>Backrooms - Long Lights</title>
     <style>
         body { margin: 0; overflow: hidden; background: #000; touch-action: none; font-family: sans-serif; }
         #ui { position: absolute; top: 20px; left: 20px; color: #ffff00; z-index: 5; text-shadow: 1px 1px #000; pointer-events: none; font-size: 10px; opacity: 0.7; }
@@ -12,7 +12,7 @@
     </style>
 </head>
 <body>
-    <div id="ui">LEVEL 0<br>蛍光灯と壁の重なりを修正しました。</div>
+    <div id="ui">LEVEL 0<br>蛍光灯の形状を細長く、2連装に変更しました。</div>
     <div id="joy-base"><div id="joy-knob"></div></div>
 
     <script type="importmap">
@@ -37,7 +37,7 @@
         document.body.appendChild(renderer.domElement);
 
         scene.add(new THREE.AmbientLight(0xffffff, 0.3));
-        const pLight = new THREE.PointLight(0xffffcc, 2.0, 10);
+        const pLight = new THREE.PointLight(0xffffcc, 1.8, 8);
         scene.add(pLight);
 
         const loader = new THREE.TextureLoader();
@@ -56,6 +56,8 @@
         const chunks = new Map();
         let colliders = [];
         const wallGeo = new THREE.BoxGeometry(GRID_SIZE + 0.2, 3.8, 0.5);
+        // 細長い蛍光灯の形状 (幅0.3m × 長さ3.0m)
+        const longLightGeo = new THREE.PlaneGeometry(0.3, 3.0);
 
         function pseudoRandom(x, z) {
             const f = Math.sin(x * 12.9898 + z * 78.233) * 43758.5453;
@@ -75,17 +77,22 @@
                             chunks.set(key, null); continue;
                         }
 
-                        // 1. まず蛍光灯の位置を決める（4グリッドおき）
                         const isLightPos = (x % 4 === 0 && z % 4 === 0);
                         
                         if (isLightPos) {
-                            const l = new THREE.Mesh(new THREE.PlaneGeometry(1.2, 0.6), lightMat);
-                            l.position.set(x * GRID_SIZE, 3.79, z * GRID_SIZE);
-                            l.rotation.x = Math.PI/2;
-                            group.add(l);
-                            // 蛍光灯がある場所には壁を作らないようにする
+                            // 蛍光灯を2つ並べて配置
+                            const l1 = new THREE.Mesh(longLightGeo, lightMat);
+                            const l2 = new THREE.Mesh(longLightGeo, lightMat);
+                            l1.position.set(x * GRID_SIZE - 0.3, 3.79, z * GRID_SIZE);
+                            l2.position.set(x * GRID_SIZE + 0.3, 3.79, z * GRID_SIZE);
+                            l1.rotation.x = l2.rotation.x = Math.PI/2;
+                            group.add(l1, l2);
+
+                            // 周辺を照らすライト
+                            const point = new THREE.PointLight(0xffffdd, 0.5, 6);
+                            point.position.set(x * GRID_SIZE, 3.5, z * GRID_SIZE);
+                            group.add(point);
                         } else if (pseudoRandom(x, z) < 0.4) {
-                            // 2. 蛍光灯がない場所だけに壁を生成
                             const w = new THREE.Mesh(wallGeo, wallMat);
                             w.position.set(x * GRID_SIZE, 1.9, z * GRID_SIZE);
                             w.rotation.y = pseudoRandom(z, x) > 0.5 ? 0 : Math.PI/2;
@@ -112,7 +119,7 @@
             ceiling.position.set(camera.position.x, 3.8, camera.position.z);
         }
 
-        // --- 操作系 ---
+        // --- 操作系（軽量版） ---
         let moveID = null, lookID = null;
         let moveData = { x: 0, y: 0, startX: 0, startY: 0 }, lookData = { lastX: 0, lastY: 0 };
         let lon = 0, lat = 0, targetLon = 0, targetLat = 0;
