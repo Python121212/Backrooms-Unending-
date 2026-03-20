@@ -3,16 +3,16 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Backrooms - Unified Ceiling</title>
+    <title>Backrooms - Super Lite</title>
     <style>
-        body { margin: 0; overflow: hidden; background: #000; touch-action: none; font-family: sans-serif; }
-        #ui { position: absolute; top: 20px; left: 20px; color: #ffff00; z-index: 5; text-shadow: 1px 1px #000; pointer-events: none; font-size: 10px; opacity: 0.7; }
-        #joy-base { position: absolute; width: 80px; height: 80px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 50%; display: none; }
-        #joy-knob { position: absolute; width: 30px; height: 30px; background: rgba(255,255,255,0.2); border-radius: 50%; left: 25px; top: 25px; }
+        body { margin: 0; overflow: hidden; background: #1a1a05; touch-action: none; font-family: sans-serif; }
+        #ui { position: absolute; top: 20px; left: 20px; color: #ffff00; z-index: 5; text-shadow: 1px 1px #000; pointer-events: none; font-size: 10px; opacity: 0.5; }
+        #joy-base { position: absolute; width: 60px; height: 60px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 50%; display: none; }
+        #joy-knob { position: absolute; width: 24px; height: 24px; background: rgba(255,255,255,0.2); border-radius: 50%; left: 18px; top: 18px; }
     </style>
 </head>
 <body>
-    <div id="ui">LEVEL 0<br>天井を1枚の板に統合し、描画を最適化しました。</div>
+    <div id="ui">LEVEL 0<br>【超軽量版】判定と描画を最小限にしました。</div>
     <div id="joy-base"><div id="joy-knob"></div></div>
 
     <script type="importmap">
@@ -23,51 +23,49 @@
         import * as THREE from 'three';
 
         const GRID_SIZE = 5;
-        const VIEW = 5; 
+        const VIEW = 4; // 描画範囲をさらに絞る
         const scene = new THREE.Scene();
-        scene.background = new THREE.Color(0x1a1a05);
-        scene.fog = new THREE.Fog(0x1a1a05, 1, 12);
+        scene.fog = new THREE.Fog(0x1a1a05, 1, 10); // 霧を近くして隠す
 
-        const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.2, 50);
+        const camera = new THREE.PerspectiveCamera(70, window.innerWidth/window.innerHeight, 0.5, 30);
         camera.position.set(0, 1.6, 0);
 
         const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: "high-performance" });
         renderer.setSize(window.innerWidth, window.innerHeight);
-        renderer.setPixelRatio(1);
+        renderer.setPixelRatio(0.8); // 解像度をあえて下げて爆速化
         document.body.appendChild(renderer.domElement);
 
-        scene.add(new THREE.AmbientLight(0xffffff, 0.2));
-        const pLight = new THREE.PointLight(0xffffcc, 1.2, 7);
+        scene.add(new THREE.AmbientLight(0xffffff, 0.4));
+        const pLight = new THREE.PointLight(0xffffcc, 1.5, 8);
         scene.add(pLight);
 
         const loader = new THREE.TextureLoader();
         const wallTex = loader.load('wallpaper.jpg');
+        const wallMat = new THREE.MeshBasicMaterial({ map: wallTex, color: 0xd9c585 }); // StandardからBasicにして計算省略
+        const floorMat = new THREE.MeshBasicMaterial({ color: 0x7e6e3d });
+        const ceilingMat = new THREE.MeshBasicMaterial({ color: 0xeeeecc });
+        const lightMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
 
-        const wallMat = new THREE.MeshStandardMaterial({ map: wallTex, color: 0xd9c585 });
-        const floorMat = new THREE.MeshStandardMaterial({ color: 0x7e6e3d });
-        const ceilingMat = new THREE.MeshStandardMaterial({ color: 0xeeeecc });
-        const lightMat = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xffffff, emissiveIntensity: 1.5 });
-
-        // 【修正】床と天井を巨大な1枚の板として定義（プレイヤーに追従させる）
-        const floor = new THREE.Mesh(new THREE.PlaneGeometry(200, 200), floorMat);
-        floor.rotation.x = -Math.PI/2; 
-        scene.add(floor);
-
-        const ceiling = new THREE.Mesh(new THREE.PlaneGeometry(200, 200), ceilingMat);
-        ceiling.rotation.x = Math.PI/2; 
-        ceiling.position.y = 3.8; 
-        scene.add(ceiling);
+        // 巨大な1枚の床と天井
+        const floor = new THREE.Mesh(new THREE.PlaneGeometry(100, 100), floorMat);
+        floor.rotation.x = -Math.PI/2; scene.add(floor);
+        const ceiling = new THREE.Mesh(new THREE.PlaneGeometry(100, 100), ceilingMat);
+        ceiling.rotation.x = Math.PI/2; ceiling.position.y = 3.8; scene.add(ceiling);
 
         const chunks = new Map();
         let colliders = [];
-        const wallGeo = new THREE.BoxGeometry(GRID_SIZE + 0.2, 3.8, 0.5);
-        const longLightGeo = new THREE.PlaneGeometry(0.25, 2.8);
+        const wallGeo = new THREE.BoxGeometry(GRID_SIZE + 0.1, 3.8, 0.4);
+        const longLightGeo = new THREE.PlaneGeometry(0.2, 2.5);
+
+        function pseudoRandom(x, z) {
+            const f = Math.sin(x * 12.98 + z * 78.23) * 43758.54;
+            return f - Math.floor(f);
+        }
 
         function updateWorld() {
             const px = Math.round(camera.position.x / GRID_SIZE);
             const pz = Math.round(camera.position.z / GRID_SIZE);
 
-            // 天井と床をプレイヤーの位置に合わせて移動（無限に続くように見せる）
             floor.position.set(camera.position.x, 0, camera.position.z);
             ceiling.position.set(camera.position.x, 3.8, camera.position.z);
 
@@ -78,24 +76,16 @@
                         const group = new THREE.Group();
                         if (Math.abs(x) < 2 && Math.abs(z) < 2) { chunks.set(key, null); continue; }
 
-                        if (x % 4 === 0 && z % 4 === 0) {
-                            // 蛍光灯（天井板のすぐ下に配置）
+                        const isLightPos = (x % 5 === 0 && z % 5 === 0);
+                        if (isLightPos) {
                             const l1 = new THREE.Mesh(longLightGeo, lightMat);
-                            const l2 = new THREE.Mesh(longLightGeo, lightMat);
-                            l1.position.set(x * GRID_SIZE - 0.25, 3.79, z * GRID_SIZE);
-                            l2.position.set(x * GRID_SIZE + 0.25, 3.79, z * GRID_SIZE);
-                            l1.rotation.x = l2.rotation.x = Math.PI/2;
-                            group.add(l1, l2);
-
-                            const p1 = new THREE.PointLight(0xffffdd, 0.4, 5);
-                            p1.position.set(x * GRID_SIZE - 0.25, 3.6, z * GRID_SIZE);
-                            const p2 = new THREE.PointLight(0xffffdd, 0.4, 5);
-                            p2.position.set(x * GRID_SIZE + 0.25, 3.6, z * GRID_SIZE);
-                            group.add(p1, p2);
-                        } else if (Math.sin(x*z) > 0.6) {
+                            l1.position.set(x * GRID_SIZE, 3.79, z * GRID_SIZE);
+                            l1.rotation.x = Math.PI/2;
+                            group.add(l1);
+                        } else if (pseudoRandom(x, z) < 0.35) {
                             const w = new THREE.Mesh(wallGeo, wallMat);
                             w.position.set(x * GRID_SIZE, 1.9, z * GRID_SIZE);
-                            w.rotation.y = Math.sin(x+z) > 0 ? 0 : Math.PI/2;
+                            w.rotation.y = pseudoRandom(z, x) > 0.5 ? 0 : Math.PI/2;
                             group.add(w);
                         }
                         scene.add(group);
@@ -108,7 +98,10 @@
             for (let [key, group] of chunks) {
                 const [cx, cz] = key.split(',').map(Number);
                 if (Math.abs(cx - px) > VIEW || Math.abs(cz - pz) > VIEW) {
-                    if (group) scene.remove(group);
+                    if (group) {
+                        group.children.forEach(c => { if(c.geometry) c.geometry.dispose(); });
+                        scene.remove(group);
+                    }
                     chunks.delete(key);
                 } else if (group && Math.abs(cx - px) <= 1 && Math.abs(cz - pz) <= 1) {
                     group.children.forEach(c => { if(c.type === "Mesh" && c.geometry.type === "BoxGeometry") colliders.push(c); });
@@ -116,38 +109,39 @@
             }
         }
 
-        // --- 操作・アニメーション（共通） ---
         let moveID = null, lookID = null, moveData = { x: 0, y: 0, startX: 0, startY: 0 }, lookData = { lastX: 0, lastY: 0 };
         let lon = 0, lat = 0, targetLon = 0, targetLat = 0;
         const joyBase = document.getElementById('joy-base'), joyKnob = document.getElementById('joy-knob');
-        
+
         window.addEventListener('touchstart', (e) => {
             for(let t of e.changedTouches) {
-                if(t.clientX < window.innerWidth/2 && moveID === null) {
+                if(t.clientX < window.innerWidth/2) {
                     moveID = t.identifier; moveData.startX = t.clientX; moveData.startY = t.clientY;
-                    joyBase.style.display = 'block'; joyBase.style.left = (t.clientX-40)+'px'; joyBase.style.top = (t.clientY-40)+'px';
-                } else if(t.clientX >= window.innerWidth/2 && lookID === null) {
+                    joyBase.style.display = 'block'; joyBase.style.left = (t.clientX-30)+'px'; joyBase.style.top = (t.clientY-30)+'px';
+                } else {
                     lookID = t.identifier; lookData.lastX = t.clientX; lookData.lastY = t.clientY;
                 }
             }
         });
+
         window.addEventListener('touchmove', (e) => {
             e.preventDefault();
             for(let t of e.touches) {
                 if(t.identifier === moveID) {
                     let dx = t.clientX - moveData.startX, dy = t.clientY - moveData.startY;
-                    const d = Math.min(Math.sqrt(dx*dx+dy*dy), 35), a = Math.atan2(dy,dx);
-                    moveData.x = Math.cos(a)*(d/35); moveData.y = Math.sin(a)*(d/35);
+                    const d = Math.min(Math.sqrt(dx*dx+dy*dy), 30), a = Math.atan2(dy,dx);
+                    moveData.x = Math.cos(a)*(d/30); moveData.y = Math.sin(a)*(d/30);
                     joyKnob.style.transform = `translate(${Math.cos(a)*d}px, ${Math.sin(a)*d}px)`;
                 }
                 if(t.identifier === lookID) {
-                    targetLon -= (t.clientX - lookData.lastX) * 0.4;
-                    targetLat -= (t.clientY - lookData.lastY) * 0.4;
+                    targetLon -= (t.clientX - lookData.lastX) * 0.35;
+                    targetLat -= (t.clientY - lookData.lastY) * 0.35;
                     targetLat = Math.max(-85, Math.min(85, targetLat));
                     lookData.lastX = t.clientX; lookData.lastY = t.clientY;
                 }
             }
         }, { passive: false });
+
         window.addEventListener('touchend', (e) => {
             for(let t of e.changedTouches) {
                 if(t.identifier === moveID) { moveID=null; moveData.x=0; moveData.y=0; joyBase.style.display='none'; }
@@ -157,7 +151,7 @@
 
         const pBox = new THREE.Box3(), wBox = new THREE.Box3();
         function checkCol(pos) {
-            pBox.setFromCenterAndSize(pos, new THREE.Vector3(0.5, 2.0, 0.5));
+            pBox.setFromCenterAndSize(pos, new THREE.Vector3(0.6, 2.0, 0.6));
             for (let w of colliders) {
                 wBox.setFromObject(w);
                 if (pBox.intersectsBox(wBox)) return true;
@@ -168,14 +162,13 @@
         const dir = new THREE.Vector3(), side = new THREE.Vector3(), up = new THREE.Vector3(0,1,0);
         function animate() {
             requestAnimationFrame(animate);
-            lon += (targetLon - lon) * 0.15; lat += (targetLat - lat) * 0.15;
+            lon += (targetLon - lon) * 0.2; lat += (targetLat - lat) * 0.2;
             camera.lookAt(new THREE.Vector3().setFromSphericalCoords(1, THREE.MathUtils.degToRad(90-lat), THREE.MathUtils.degToRad(lon)).add(camera.position));
             if(moveID !== null) {
                 camera.getWorldDirection(dir); dir.y = 0; dir.normalize();
                 side.crossVectors(up, dir).normalize();
-                const speed = 0.12;
-                const vx = (dir.x * -moveData.y + side.x * -moveData.x) * speed;
-                const vz = (dir.z * -moveData.y + side.z * -moveData.x) * speed;
+                const vx = (dir.x * -moveData.y + side.x * -moveData.x) * 0.12;
+                const vz = (dir.z * -moveData.y + side.z * -moveData.x) * 0.12;
                 const nextX = camera.position.clone(); nextX.x += vx;
                 if (!checkCol(nextX)) camera.position.x = nextX.x;
                 const nextZ = camera.position.clone(); nextZ.z += vz;
