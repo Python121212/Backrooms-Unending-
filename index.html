@@ -3,32 +3,31 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>The Backrooms - Visible Edition</title>
+    <title>Backrooms FPS - Mobile</title>
     <style>
         body { margin: 0; overflow: hidden; background: #222; touch-action: none; font-family: sans-serif; }
         canvas { display: block; }
         
         /* ジョイスティック */
         .joystick-base {
-            position: absolute; width: 80px; height: 80px;
-            background: rgba(255, 255, 255, 0.2);
-            border: 2px solid rgba(255, 255, 255, 0.4);
+            position: absolute; width: 100px; height: 100px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 2px solid rgba(255, 255, 255, 0.3);
             border-radius: 50%; display: none; pointer-events: none;
         }
         .joystick-knob {
-            position: absolute; width: 40px; height: 40px;
-            background: rgba(255, 255, 255, 0.6);
-            border-radius: 50%; left: 20px; top: 20px;
+            position: absolute; width: 50px; height: 50px;
+            background: rgba(255, 255, 255, 0.5);
+            border-radius: 50%; left: 25px; top: 25px;
         }
 
         #ui { position: absolute; top: 20px; left: 20px; color: #ffff00; pointer-events: none; text-shadow: 1px 1px #000; font-weight: bold; }
-        /* 画面全体の黄色い被せ（フィルター） */
-        #tint { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(255, 255, 0, 0.03); pointer-events: none; }
+        #crosshair { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: rgba(255,255,255,0.5); pointer-events: none; font-size: 20px; }
     </style>
 </head>
 <body>
-    <div id="tint"></div>
-    <div id="ui">LEVEL 0<br>スティックで移動 / 右画面で視点</div>
+    <div id="ui">FPS MODE<br>左スティック: 移動(横歩き可) / 右側: 視点</div>
+    <div id="crosshair">+</div>
     <div id="joy-base" class="joystick-base"><div id="joy-knob" class="joystick-knob"></div></div>
 
     <script type="importmap">
@@ -38,12 +37,10 @@
     <script type="module">
         import * as THREE from 'three';
 
-        const GRID_SIZE = 6;
+        // --- シーン構築 ---
         const scene = new THREE.Scene();
-        // 背景色を少し明るい黄色に変更
-        scene.background = new THREE.Color(0x33331a);
-        // 霧（Fog）を少し遠ざけて視認性を確保
-        scene.fog = new THREE.Fog(0x33331a, 1, 35);
+        scene.background = new THREE.Color(0x2a2a15);
+        scene.fog = new THREE.Fog(0x2a2a15, 1, 40);
 
         const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
         camera.position.set(0, 1.6, 0);
@@ -53,58 +50,52 @@
         renderer.setPixelRatio(window.devicePixelRatio);
         document.body.appendChild(renderer.domElement);
 
-        // --- ライティングの修正 ---
-        // 1. 全体を照らす環境光を大幅に強化（これで真っ暗な場所がなくなる）
-        const ambientLight = new THREE.AmbientLight(0xffffee, 0.8); 
-        scene.add(ambientLight);
+        // --- ライティング ---
+        const ambient = new THREE.AmbientLight(0xffffee, 0.7); 
+        scene.add(ambient);
+        const pointLight = new THREE.PointLight(0xffffcc, 1.0, 15);
+        scene.add(pointLight);
 
-        // 2. プレイヤーの頭上にあるライト（蛍光灯の照り返しをシミュレート）
-        const overheadLight = new THREE.PointLight(0xffffcc, 1.2, 20);
-        scene.add(overheadLight);
-
-        // --- マテリアル ---
+        // --- オブジェクト生成 ---
         const createTex = (c) => {
             const cv = document.createElement('canvas'); cv.width = 128; cv.height = 128;
             const cx = cv.getContext('2d'); cx.fillStyle = c; cx.fillRect(0,0,128,128);
-            for(let i=0;i<800;i++){ cx.fillStyle=`rgba(0,0,0,0.08)`; cx.fillRect(Math.random()*128,Math.random()*128,2,2); }
+            for(let i=0;i<500;i++){ cx.fillStyle=`rgba(0,0,0,0.05)`; cx.fillRect(Math.random()*128,Math.random()*128,2,2); }
             return new THREE.CanvasTexture(cv);
         };
-        // 壁の色を明るく、反射を抑えめに
         const wallMat = new THREE.MeshStandardMaterial({ map: createTex('#d9c585'), roughness: 0.8 });
-        const floorMat = new THREE.MeshStandardMaterial({ map: createTex('#9e8e5d'), roughness: 0.9 });
-        
-        const floor = new THREE.Mesh(new THREE.PlaneGeometry(1000, 1000), floorMat);
+        const floor = new THREE.Mesh(new THREE.PlaneGeometry(1000, 1000), new THREE.MeshStandardMaterial({ map: createTex('#8e7e4d'), roughness: 0.9 }));
         floor.rotation.x = -Math.PI / 2; scene.add(floor);
 
         const walls = [];
-        const wallGeo = new THREE.BoxGeometry(GRID_SIZE, 4, 0.8);
-        for(let i=0; i<80; i++) {
+        const wallGeo = new THREE.BoxGeometry(6, 4, 0.8);
+        for(let i=0; i<70; i++) {
             const wall = new THREE.Mesh(wallGeo, wallMat);
-            const rx = Math.floor(Math.random()*30-15)*GRID_SIZE;
-            const rz = Math.floor(Math.random()*30-15)*GRID_SIZE;
-            if(rx === 0 && rz === 0) continue;
+            const rx = Math.floor(Math.random()*30-15)*6;
+            const rz = Math.floor(Math.random()*30-15)*6;
+            if(Math.abs(rx) < 5 && Math.abs(rz) < 5) continue;
             wall.position.set(rx, 2, rz);
             wall.rotation.y = Math.random() > 0.5 ? 0 : Math.PI/2;
             scene.add(wall);
             walls.push(wall);
         }
 
-        // --- 操作ロジック（前回のジョイスティックを維持） ---
+        // --- 操作ロジック ---
         const joyBase = document.getElementById('joy-base');
         const joyKnob = document.getElementById('joy-knob');
-        let moveData = { active: false, startX: 0, startY: 0, dirX: 0, dirY: 0, id: null };
-        let lookData = { id: null, lastX: 0, lastY: 0 };
+        let moveState = { active: false, id: null, x: 0, y: 0, startX: 0, startY: 0 };
+        let lookState = { id: null, lastX: 0, lastY: 0 };
         let lat = 0, lon = 0;
 
         window.addEventListener('touchstart', (e) => {
             for(let t of e.changedTouches) {
-                if(t.clientX < window.innerWidth / 2 && !moveData.active) {
-                    moveData.active = true; moveData.id = t.identifier;
-                    moveData.startX = t.clientX; moveData.startY = t.clientY;
+                if(t.clientX < window.innerWidth / 2) {
+                    moveState.active = true; moveState.id = t.identifier;
+                    moveState.startX = t.clientX; moveState.startY = t.clientY;
                     joyBase.style.display = 'block';
-                    joyBase.style.left = `${t.clientX - 40}px`; joyBase.style.top = `${t.clientY - 40}px`;
+                    joyBase.style.left = `${t.clientX - 50}px`; joyBase.style.top = `${t.clientY - 50}px`;
                 } else {
-                    lookData.id = t.identifier; lookData.lastX = t.clientX; lookData.lastY = t.clientY;
+                    lookState.id = t.identifier; lookState.lastX = t.clientX; lookState.lastY = t.clientY;
                 }
             }
         });
@@ -112,65 +103,84 @@
         window.addEventListener('touchmove', (e) => {
             e.preventDefault();
             for(let t of e.changedTouches) {
-                if(t.identifier === moveData.id) {
-                    let dx = t.clientX - moveData.startX; let dy = t.clientY - moveData.startY;
-                    const dist = Math.min(Math.sqrt(dx*dx + dy*dy), 40);
+                if(t.identifier === moveState.id) {
+                    let dx = t.clientX - moveState.startX;
+                    let dy = t.clientY - moveState.startY;
+                    const dist = Math.min(Math.sqrt(dx*dx + dy*dy), 50);
                     const angle = Math.atan2(dy, dx);
-                    moveData.dirX = Math.cos(angle) * (dist / 40);
-                    moveData.dirY = Math.sin(angle) * (dist / 40);
+                    moveState.x = Math.cos(angle) * (dist / 50);
+                    moveState.y = Math.sin(angle) * (dist / 50);
                     joyKnob.style.transform = `translate(${Math.cos(angle)*dist}px, ${Math.sin(angle)*dist}px)`;
-                } else if(t.identifier === lookData.id) {
-                    lon += (t.clientX - lookData.lastX) * 0.25;
-                    lat -= (t.clientY - lookData.lastY) * 0.25;
+                } else if(t.identifier === lookState.id) {
+                    lon += (t.clientX - lookState.lastX) * 0.2;
+                    lat -= (t.clientY - lookState.lastY) * 0.2;
                     lat = Math.max(-85, Math.min(85, lat));
-                    lookData.lastX = t.clientX; lookData.lastY = t.clientY;
+                    lookState.lastX = t.clientX; lookState.lastY = t.clientY;
                 }
             }
         }, { passive: false });
 
         window.addEventListener('touchend', (e) => {
             for(let t of e.changedTouches) {
-                if(t.identifier === moveData.id) {
-                    moveData.active = false; moveData.dirX = 0; moveData.dirY = 0;
+                if(t.identifier === moveState.id) {
+                    moveState.active = false; moveState.x = 0; moveState.y = 0;
                     joyBase.style.display = 'none';
+                    joyKnob.style.transform = `translate(0px, 0px)`;
                 }
-                if(t.identifier === lookData.id) lookData.id = null;
+                if(t.identifier === lookState.id) lookState.id = null;
             }
         });
 
-        function movePlayer(dtX, dtY) {
-            const speed = 0.12;
-            const direction = new THREE.Vector3();
-            camera.getWorldDirection(direction);
-            direction.y = 0; direction.normalize();
-            const side = new THREE.Vector3().crossVectors(camera.up, direction).normalize();
-            
-            const nextPos = camera.position.clone();
-            nextPos.addScaledVector(direction, -dtY * speed);
-            nextPos.addScaledVector(side, dtX * speed);
+        // --- FPS移動エンジンの改善 ---
+        const moveVector = new THREE.Vector3();
+        const sideVector = new THREE.Vector3();
+        const upVector = new THREE.Vector3(0, 1, 0);
 
-            const playerBox = new THREE.Box3().setFromCenterAndSize(nextPos, new THREE.Vector3(0.8, 2, 0.8));
-            let collision = false;
-            for(let wall of walls) {
-                if(playerBox.intersectsBox(new THREE.Box3().setFromObject(wall))) {
-                    collision = true; break;
-                }
+        function updateMovement() {
+            if(!moveState.active) return;
+
+            const speed = 0.12;
+            // 1. カメラが向いている水平方向を計算
+            const dir = new THREE.Vector3();
+            camera.getWorldDirection(dir);
+            dir.y = 0; dir.normalize();
+
+            // 2. 右方向（横歩き用ベクトル）を計算
+            sideVector.crossVectors(upVector, dir).normalize();
+
+            // 3. 入力値(moveState.x, y)に基づいて移動ベクトルを合成
+            // 前後移動: dirに対して -moveState.y (上がマイナスなので反転)
+            // 左右移動: sideVectorに対して -moveState.x
+            const nextStep = new THREE.Vector3()
+                .addScaledVector(dir, -moveState.y * speed)
+                .addScaledVector(sideVector, -moveState.x * speed);
+
+            const nextPos = camera.position.clone().add(nextStep);
+
+            // 4. 簡易衝突判定
+            const pBox = new THREE.Box3().setFromCenterAndSize(nextPos, new THREE.Vector3(0.6, 2, 0.6));
+            let hit = false;
+            for(let w of walls) {
+                if(pBox.intersectsBox(new THREE.Box3().setFromObject(w))) { hit = true; break; }
             }
-            if(!collision) camera.position.copy(nextPos);
+            if(!hit) camera.position.copy(nextPos);
         }
 
+        // --- ループ ---
         const target = new THREE.Vector3();
         function animate() {
             requestAnimationFrame(animate);
+
+            // 視界の更新
             const phi = THREE.MathUtils.degToRad(90 - lat);
             const theta = THREE.MathUtils.degToRad(lon);
             target.setFromSphericalCoords(1, phi, theta).add(camera.position);
             camera.lookAt(target);
 
-            if(moveData.active) movePlayer(moveData.dirX, moveData.dirY);
+            updateMovement();
             
             camera.position.y = 1.6;
-            overheadLight.position.copy(camera.position); // ライトを常に頭上に配置
+            pointLight.position.copy(camera.position);
 
             renderer.render(scene, camera);
         }
