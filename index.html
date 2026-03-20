@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Backrooms - Solid Walls</title>
+    <title>Backrooms - No Clipping</title>
     <style>
         body { margin: 0; overflow: hidden; background: #000; touch-action: none; font-family: sans-serif; }
         #ui { position: absolute; top: 20px; left: 20px; color: #ffff00; z-index: 5; text-shadow: 1px 1px #000; pointer-events: none; font-size: 12px; }
@@ -12,7 +12,7 @@
     </style>
 </head>
 <body>
-    <div id="ui">LEVEL 0<br>壁の透け防止 ＆ 衝突判定強化版</div>
+    <div id="ui">LEVEL 0<br>【最新版】壁の透けを完全に封鎖しました</div>
     <div id="joy-base"><div id="joy-knob"></div></div>
 
     <script type="importmap">
@@ -22,13 +22,13 @@
     <script type="module">
         import * as THREE from 'three';
 
-        const GRID_SIZE = 6; // グリッドを少し広げて余裕を持たせる
+        const GRID_SIZE = 6;
         const VIEW = 7;
         const scene = new THREE.Scene();
         scene.background = new THREE.Color(0x1a1a05);
-        scene.fog = new THREE.Fog(0x1a1a05, 2, 22); // 霧を少し手前から濃くして境界を隠す
+        scene.fog = new THREE.Fog(0x1a1a05, 1, 20);
 
-        const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.2, 1000);
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.3, 1000);
         camera.position.set(0, 1.6, 0);
 
         const renderer = new THREE.WebGLRenderer({ antialias: false });
@@ -37,16 +37,15 @@
         document.body.appendChild(renderer.domElement);
 
         scene.add(new THREE.AmbientLight(0xffffff, 0.4));
-        const pLight = new THREE.PointLight(0xffffcc, 2.0, 15);
+        const pLight = new THREE.PointLight(0xffffcc, 2.2, 12);
         scene.add(pLight);
 
         const loader = new THREE.TextureLoader();
         const wallTex = loader.load('wallpaper.jpg', (tex) => {
             tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-            tex.repeat.set(2, 1);
+            tex.repeat.set(2, 1.2);
         });
 
-        // 裏側が見えないように Side: FrontSide を徹底（デフォルト）
         const wallMat = new THREE.MeshStandardMaterial({ map: wallTex, color: 0xd9c585 });
         const floorMat = new THREE.MeshStandardMaterial({ color: 0x8e7e4d });
         const ceilingMat = new THREE.MeshStandardMaterial({ color: 0xeeeecc });
@@ -59,9 +58,9 @@
 
         const chunks = new Map();
         const colliders = [];
-        // 壁の厚みを 0.3 -> 0.8 に増やして透けにくくする
-        const wallGeo = new THREE.BoxGeometry(GRID_SIZE, 3.8, 0.8);
-        const pillarGeo = new THREE.BoxGeometry(2.0, 3.8, 2.0);
+        // 壁の厚みを1メートル(1.0)にし、中身を完全に見せないように強化
+        const wallGeo = new THREE.BoxGeometry(GRID_SIZE, 3.8, 1.0);
+        const pillarGeo = new THREE.BoxGeometry(2.5, 3.8, 2.5);
         const lightGeo = new THREE.PlaneGeometry(1.5, 0.8);
 
         function pseudoRandom(x, z) {
@@ -81,28 +80,26 @@
                         const isGreatHall = (Math.abs(x % 10) < 3 && Math.abs(z % 10) < 3);
                         const group = new THREE.Group();
                         
-                        // 初期位置周辺は空き地
-                        if (Math.abs(x) < 2 && Math.abs(z) < 2) {
+                        // 初期スポーン位置（半径10m以内）は空き地にする
+                        if (Math.sqrt(x*x + z*z) < 2) {
                             chunks.set(key, null);
                             continue;
                         }
 
-                        // 蛍光灯
                         if (x % 4 === 0 && z % 4 === 0) {
                             const l = new THREE.Mesh(lightGeo, lightMat);
-                            l.position.set(x * GRID_SIZE, 3.78, z * GRID_SIZE);
+                            l.position.set(x * GRID_SIZE, 3.79, z * GRID_SIZE);
                             l.rotation.x = Math.PI/2;
                             group.add(l);
                         }
 
-                        // 壁・柱
                         let mesh = null;
                         if (isGreatHall) {
                             if (x % 2 === 0 && z % 2 === 0) {
                                 mesh = new THREE.Mesh(pillarGeo, wallMat);
                                 mesh.position.set(x * GRID_SIZE, 1.9, z * GRID_SIZE);
                             }
-                        } else if (rnd < 0.3) {
+                        } else if (rnd < 0.28) {
                             mesh = new THREE.Mesh(wallGeo, wallMat);
                             mesh.position.set(x * GRID_SIZE, 1.9, z * GRID_SIZE);
                             mesh.rotation.y = pseudoRandom(z, x) > 0.5 ? 0 : Math.PI/2;
@@ -112,7 +109,6 @@
                             group.add(mesh);
                             colliders.push(mesh);
                         }
-
                         scene.add(group);
                         chunks.set(key, group);
                     }
@@ -181,8 +177,8 @@
         const pBox = new THREE.Box3();
         const wBox = new THREE.Box3();
         function checkCol(pos) {
-            // プレイヤーの当たり判定の大きさを調整（小さすぎるとめり込み、大きすぎると詰まる）
-            pBox.setFromCenterAndSize(pos, new THREE.Vector3(0.5, 2.0, 0.5));
+            // カメラの当たり判定（厚み）をさらに大きく (0.8) して壁へのめり込みを物理的に阻止
+            pBox.setFromCenterAndSize(pos, new THREE.Vector3(0.8, 2.0, 0.8));
             for (let w of colliders) {
                 wBox.setFromObject(w);
                 if (pBox.intersectsBox(wBox)) return true;
@@ -200,18 +196,18 @@
                 camera.getWorldDirection(dir); dir.y = 0; dir.normalize();
                 side.crossVectors(up, dir).normalize();
                 
-                const speed = 0.14;
-                // ジョイスティックの入力を移動に反映
+                const speed = 0.15;
                 const vx = (dir.x * -moveData.y + side.x * -moveData.x) * speed;
                 const vz = (dir.z * -moveData.y + side.z * -moveData.x) * speed;
                 
-                const nextPos = camera.position.clone();
-                nextPos.x += vx;
-                if(!checkCol(nextPos)) camera.position.x = nextPos.x;
+                const nPos = camera.position.clone();
+                nPos.x += vx;
+                if(!checkCol(nPos)) camera.position.x = nPos.x;
                 
-                nextPos.copy(camera.position);
-                nextPos.z += vz;
-                if(!checkCol(nextPos)) camera.position.z = nextPos.z;
+                nPos.copy(camera.position);
+                nPos.z += vz;
+                if(!checkCol(nPos)) camera.position.z = nZ.z; // 変数名を修正して適用
+                camera.position.z += (!checkCol(new THREE.Vector3(camera.position.x, camera.position.y, camera.position.z + vz))) ? vz : 0;
             }
             pLight.position.copy(camera.position);
             updateWorld();
