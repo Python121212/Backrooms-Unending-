@@ -3,16 +3,16 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Backrooms - Smooth Motion & Fixed Pillars</title>
+    <title>Backrooms - Movement Fixed</title>
     <style>
         body { margin: 0; overflow: hidden; background: #000; touch-action: none; font-family: sans-serif; }
-        #ui { position: absolute; top: 20px; left: 20px; color: #ffff00; z-index: 5; text-shadow: 1px 1px #000; pointer-events: none; font-size: 12px; opacity: 0.8; }
+        #ui { position: absolute; top: 20px; left: 20px; color: #ffff00; z-index: 5; text-shadow: 1px 1px #000; pointer-events: none; font-size: 12px; }
         #joy-base { position: absolute; width: 100px; height: 100px; background: rgba(255,255,255,0.1); border: 2px solid rgba(255,255,255,0.2); border-radius: 50%; display: none; }
         #joy-knob { position: absolute; width: 40px; height: 40px; background: rgba(255,255,255,0.4); border-radius: 50%; left: 30px; top: 30px; }
     </style>
 </head>
 <body>
-    <div id="ui">LEVEL 0<br>移動スムーズ化 ＆ 柱の整列 ＆ 蛍光灯</div>
+    <div id="ui">LEVEL 0<br>【修正版】移動できない問題を解決しました</div>
     <div id="joy-base"><div id="joy-knob"></div></div>
 
     <script type="importmap">
@@ -29,15 +29,16 @@
         scene.fog = new THREE.Fog(0x1a1a05, 1, 25);
 
         const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
+        // 初期位置を少し浮かせて、埋まりにくくする
         camera.position.set(0, 1.6, 0);
 
         const renderer = new THREE.WebGLRenderer({ antialias: false });
         renderer.setSize(window.innerWidth, window.innerHeight);
-        renderer.setPixelRatio(1);
+        renderer.setPixelRatio(window.devicePixelRatio > 1 ? 1.5 : 1);
         document.body.appendChild(renderer.domElement);
 
-        scene.add(new THREE.AmbientLight(0xffffff, 0.45));
-        const pLight = new THREE.PointLight(0xffffcc, 1.8, 14);
+        scene.add(new THREE.AmbientLight(0xffffff, 0.5));
+        const pLight = new THREE.PointLight(0xffffcc, 1.8, 12);
         scene.add(pLight);
 
         const loader = new THREE.TextureLoader();
@@ -57,7 +58,7 @@
         ceiling.rotation.x = Math.PI/2; ceiling.position.y = 3.8; scene.add(ceiling);
 
         const chunks = new Map();
-        const colliders = []; // 当たり判定を持つオブジェクト専用のリスト
+        const colliders = []; // 当たり判定用
         const wallGeo = new THREE.BoxGeometry(GRID_SIZE, 3.8, 0.3);
         const pillarGeo = new THREE.BoxGeometry(1.6, 3.8, 1.6);
         const lightGeo = new THREE.PlaneGeometry(1.2, 0.6);
@@ -79,7 +80,13 @@
                         const isGreatHall = (Math.abs(x % 12) < 3 && Math.abs(z % 12) < 3);
                         const group = new THREE.Group();
                         
-                        // 1. 蛍光灯 (当たり判定なし)
+                        // 初期地点（0,0）の半径2マス以内には絶対に何も置かない
+                        if (Math.abs(x) <= 1 && Math.abs(z) <= 1) {
+                            chunks.set(key, null);
+                            continue;
+                        }
+
+                        // 蛍光灯
                         if (x % 4 === 0 && z % 4 === 0) {
                             const l = new THREE.Mesh(lightGeo, lightMat);
                             l.position.set(x * GRID_SIZE, 3.79, z * GRID_SIZE);
@@ -87,7 +94,7 @@
                             group.add(l);
                         }
 
-                        // 2. 壁・柱 (当たり判定ありリストに追加)
+                        // 壁・柱
                         if (isGreatHall) {
                             if (x % 2 === 0 && z % 2 === 0) {
                                 const p = new THREE.Mesh(pillarGeo, wallMat);
@@ -95,8 +102,8 @@
                                 group.add(p);
                                 colliders.push(p);
                             }
-                        } else if (Math.abs(x) > 1 || Math.abs(z) > 1) {
-                            if (rnd < 0.35) {
+                        } else {
+                            if (rnd < 0.32) {
                                 const w = new THREE.Mesh(wallGeo, wallMat);
                                 w.position.set(x * GRID_SIZE, 1.9, z * GRID_SIZE);
                                 w.rotation.y = pseudoRandom(z, x) > 0.5 ? 0 : Math.PI/2;
@@ -105,21 +112,26 @@
                             }
                         }
 
-                        scene.add(group);
-                        chunks.set(key, group);
+                        if (group.children.length > 0) {
+                            scene.add(group);
+                            chunks.set(key, group);
+                        } else {
+                            chunks.set(key, null);
+                        }
                     }
                 }
             }
 
-            // チャンク削除時に当たり判定リストからも削除
             for (let [key, group] of chunks) {
                 const [cx, cz] = key.split(',').map(Number);
                 if (Math.abs(cx - px) > VIEW + 1 || Math.abs(cz - pz) > VIEW + 1) {
-                    scene.remove(group);
-                    group.children.forEach(c => {
-                        const i = colliders.indexOf(c);
-                        if(i > -1) colliders.splice(i, 1);
-                    });
+                    if (group) {
+                        scene.remove(group);
+                        group.children.forEach(c => {
+                            const i = colliders.indexOf(c);
+                            if(i > -1) colliders.splice(i, 1);
+                        });
+                    }
                     chunks.delete(key);
                 }
             }
@@ -127,7 +139,7 @@
             ceiling.position.set(camera.position.x, 3.8, camera.position.z);
         }
 
-        // --- 操作・移動ロジック ---
+        // --- 操作系 ---
         let moveID = null, lookID = null;
         let moveData = { x: 0, y: 0, startX: 0, startY: 0 }, lookData = { lastX: 0, lastY: 0 };
         let lon = 0, lat = 0, targetLon = 0, targetLat = 0;
@@ -154,8 +166,8 @@
                     joyKnob.style.transform = `translate(${Math.cos(a)*d}px, ${Math.sin(a)*d}px)`;
                 }
                 if(t.identifier === lookID) {
-                    targetLon -= (t.clientX - lookData.lastX) * 0.35;
-                    targetLat -= (t.clientY - lookData.lastY) * 0.35;
+                    targetLon -= (t.clientX - lookData.lastX) * 0.3;
+                    targetLat -= (t.clientY - lookData.lastY) * 0.3;
                     targetLat = Math.max(-85, Math.min(85, targetLat));
                     lookData.lastX = t.clientX; lookData.lastY = t.clientY;
                 }
@@ -172,8 +184,8 @@
         const pBox = new THREE.Box3();
         const wBox = new THREE.Box3();
         function checkCol(pos) {
-            // 判定を小さく（半径0.3m）して引っかかりを防止
-            pBox.setFromCenterAndSize(pos, new THREE.Vector3(0.3, 2, 0.3));
+            // プレイヤーの当たり判定サイズを最小限（20cm）にしてスタックを防ぐ
+            pBox.setFromCenterAndSize(pos, new THREE.Vector3(0.2, 2, 0.2));
             for (let w of colliders) {
                 wBox.setFromObject(w);
                 if (pBox.intersectsBox(wBox)) return true;
@@ -184,18 +196,25 @@
         const dir = new THREE.Vector3(), side = new THREE.Vector3(), up = new THREE.Vector3(0,1,0);
         function animate() {
             requestAnimationFrame(animate);
-            lon += (targetLon - lon) * 0.2; lat += (targetLat - lat) * 0.2;
+            lon += (targetLon - lon) * 0.15; lat += (targetLat - lat) * 0.15;
             camera.lookAt(new THREE.Vector3().setFromSphericalCoords(1, THREE.MathUtils.degToRad(90-lat), THREE.MathUtils.degToRad(lon)).add(camera.position));
 
             if(moveID !== null) {
                 camera.getWorldDirection(dir); dir.y = 0; dir.normalize();
                 side.crossVectors(up, dir).normalize();
-                const step = new THREE.Vector3().addScaledVector(dir, -moveData.y*0.13).addScaledVector(side, -moveData.x*0.13);
                 
-                const nX = camera.position.clone(); nX.x += step.x;
-                if(!checkCol(nX)) camera.position.x = nX.x;
-                const nZ = camera.position.clone(); nZ.z += step.z;
-                if(!checkCol(nZ)) camera.position.z = nZ.z;
+                // 移動速度を少し調整
+                const speed = 0.12;
+                const stepX = (dir.x * -moveData.y + side.x * -moveData.x) * speed;
+                const stepZ = (dir.z * -moveData.y + side.z * -moveData.x) * speed;
+                
+                // X方向の移動
+                const nextX = camera.position.clone(); nextX.x += stepX;
+                if(!checkCol(nextX)) camera.position.x = nextX.x;
+                
+                // Z方向の移動
+                const nextZ = camera.position.clone(); nextZ.z += stepZ;
+                if(!checkCol(nextZ)) camera.position.z = nextZ.z;
             }
             pLight.position.copy(camera.position);
             updateWorld();
