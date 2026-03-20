@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Backrooms FPS - Smooth Camera</title>
+    <title>Backrooms - Multi-Touch FPS</title>
     <style>
         body { margin: 0; overflow: hidden; background: #222; touch-action: none; font-family: sans-serif; }
         canvas { display: block; }
@@ -14,7 +14,7 @@
     </style>
 </head>
 <body>
-    <div id="ui">LEVEL 0<br>視点を「滑らか」に調整しました</div>
+    <div id="ui">LEVEL 0<br>両指の同時操作に対応しました</div>
     <div id="crosshair">+</div>
     <div id="joy-base"><div id="joy-knob"></div></div>
 
@@ -25,7 +25,7 @@
     <script type="module">
         import * as THREE from 'three';
 
-        // --- シーン構築 ---
+        // --- シーン・ライティング ---
         const scene = new THREE.Scene();
         scene.background = new THREE.Color(0x2a2a15);
         scene.fog = new THREE.Fog(0x2a2a15, 1, 45);
@@ -42,7 +42,7 @@
         const light = new THREE.PointLight(0xffffcc, 1.2, 18);
         scene.add(light);
 
-        // --- マテリアル・マップ ---
+        // --- 壁と床の生成 ---
         const createTex = (c) => {
             const cv = document.createElement('canvas'); cv.width = 128; cv.height = 128;
             const cx = cv.getContext('2d'); cx.fillStyle = c; cx.fillRect(0,0,128,128);
@@ -66,7 +66,7 @@
             walls.push(wall);
         }
 
-        // --- 操作システム (視点スムージング版) ---
+        // --- 【重要】マルチタッチ操作ロジック ---
         const joyBase = document.getElementById('joy-base');
         const joyKnob = document.getElementById('joy-knob');
         
@@ -74,60 +74,68 @@
         let lookTouchID = null;
         
         let moveData = { x: 0, y: 0, startX: 0, startY: 0 };
+        let lookData = { lastX: 0, lastY: 0 };
         
-        // 視点計算用の変数
         let lon = 0, lat = 0;
-        let targetLon = 0, targetLat = 0; // 目標値
-        const lerpFactor = 0.15; // スムージングの強さ（小さいほどヌルヌル動く）
+        let targetLon = 0, targetLat = 0;
+        const lerpFactor = 0.2; // 追従速度を少し上げました
 
         window.addEventListener('touchstart', (e) => {
-            for(let t of e.changedTouches) {
+            for(let i = 0; i < e.changedTouches.length; i++) {
+                const t = e.changedTouches[i];
+                // 左半分：移動開始
                 if(t.clientX < window.innerWidth / 2 && moveTouchID === null) {
                     moveTouchID = t.identifier;
-                    moveData.startX = t.clientX; moveData.startY = t.clientY;
+                    moveData.startX = t.clientX;
+                    moveData.startY = t.clientY;
                     joyBase.style.display = 'block';
-                    joyBase.style.left = `${t.clientX - 60}px`; joyBase.style.top = `${t.clientY - 60}px`;
-                } else if(t.clientX >= window.innerWidth / 2 && lookTouchID === null) {
+                    joyBase.style.left = `${t.clientX - 60}px`;
+                    joyBase.style.top = `${t.clientY - 60}px`;
+                } 
+                // 右半分：視点移動開始
+                else if(t.clientX >= window.innerWidth / 2 && lookTouchID === null) {
                     lookTouchID = t.identifier;
-                    // タッチ開始時の位置を保存
-                    lookTouchID.lastX = t.clientX;
-                    lookTouchID.lastY = t.clientY;
+                    lookData.lastX = t.clientX;
+                    lookData.lastY = t.clientY;
                 }
             }
         }, { passive: false });
 
         window.addEventListener('touchmove', (e) => {
             e.preventDefault();
-            for(let t of e.changedTouches) {
+            // changedTouchesではなく、すべての現在進行中のtouchesをチェックする
+            for(let i = 0; i < e.touches.length; i++) {
+                const t = e.touches[i];
+                
                 if(t.identifier === moveTouchID) {
                     let dx = t.clientX - moveData.startX;
                     let dy = t.clientY - moveData.startY;
-                    const dist = Math.min(Math.sqrt(dx*dx + dy*dy), 50);
+                    const maxDist = 50;
+                    const dist = Math.min(Math.sqrt(dx*dx + dy*dy), maxDist);
                     const angle = Math.atan2(dy, dx);
-                    moveData.x = Math.cos(angle) * (dist / 50);
-                    moveData.y = Math.sin(angle) * (dist / 50);
+                    moveData.x = Math.cos(angle) * (dist / maxDist);
+                    moveData.y = Math.sin(angle) * (dist / maxDist);
                     joyKnob.style.transform = `translate(${Math.cos(angle)*dist}px, ${Math.sin(angle)*dist}px)`;
                 } 
-                else if(t.identifier === lookTouchID) {
-                    // 直前のフレームからの差分を取得
-                    const deltaX = t.clientX - (lookTouchID.lastX || t.clientX);
-                    const deltaY = t.clientY - (lookTouchID.lastY || t.clientY);
-                    
-                    // 目標値を更新
-                    targetLon += deltaX * 0.25; // 感度調整
-                    targetLat -= deltaY * 0.25;
+                
+                if(t.identifier === lookTouchID) {
+                    const deltaX = t.clientX - lookData.lastX;
+                    const deltaY = t.clientY - lookData.lastY;
+                    targetLon += deltaX * 0.3;
+                    targetLat -= deltaY * 0.3;
                     targetLat = Math.max(-85, Math.min(85, targetLat));
-                    
-                    lookTouchID.lastX = t.clientX;
-                    lookTouchID.lastY = t.clientY;
+                    lookData.lastX = t.clientX;
+                    lookData.lastY = t.clientY;
                 }
             }
         }, { passive: false });
 
         window.addEventListener('touchend', (e) => {
-            for(let t of e.changedTouches) {
+            for(let i = 0; i < e.changedTouches.length; i++) {
+                const t = e.changedTouches[i];
                 if(t.identifier === moveTouchID) {
-                    moveTouchID = null; moveData.x = 0; moveData.y = 0;
+                    moveTouchID = null;
+                    moveData.x = 0; moveData.y = 0;
                     joyBase.style.display = 'none';
                     joyKnob.style.transform = `translate(0px, 0px)`;
                 } else if(t.identifier === lookTouchID) {
@@ -143,7 +151,7 @@
 
         function updateMovement() {
             if(moveTouchID === null) return;
-            const speed = 0.12;
+            const speed = 0.15;
             camera.getWorldDirection(dir);
             dir.y = 0; dir.normalize();
             side.crossVectors(up, dir).normalize();
@@ -159,19 +167,19 @@
             if(!hit) camera.position.copy(nextPos);
         }
 
-        // --- ループ ---
-        const target = new THREE.Vector3();
+        // --- アニメーションループ ---
+        const lookTarget = new THREE.Vector3();
         function animate() {
             requestAnimationFrame(animate);
 
-            // 【ここがポイント】Lerp（線形補間）で滑らかに追従させる
+            // 視点の滑らかな補間
             lon += (targetLon - lon) * lerpFactor;
             lat += (targetLat - lat) * lerpFactor;
 
             const phi = THREE.MathUtils.degToRad(90 - lat);
             const theta = THREE.MathUtils.degToRad(lon);
-            target.setFromSphericalCoords(1, phi, theta).add(camera.position);
-            camera.lookAt(target);
+            lookTarget.setFromSphericalCoords(1, phi, theta).add(camera.position);
+            camera.lookAt(lookTarget);
 
             updateMovement();
             camera.position.y = 1.6;
