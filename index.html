@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Backrooms - Better Lighting</title>
+    <title>Backrooms - Unified Ceiling</title>
     <style>
         body { margin: 0; overflow: hidden; background: #000; touch-action: none; font-family: sans-serif; }
         #ui { position: absolute; top: 20px; left: 20px; color: #ffff00; z-index: 5; text-shadow: 1px 1px #000; pointer-events: none; font-size: 10px; opacity: 0.7; }
@@ -12,7 +12,7 @@
     </style>
 </head>
 <body>
-    <div id="ui">LEVEL 0<br>蛍光灯それぞれの位置から光が出るように修正しました。</div>
+    <div id="ui">LEVEL 0<br>天井を1枚の板に統合し、描画を最適化しました。</div>
     <div id="joy-base"><div id="joy-knob"></div></div>
 
     <script type="importmap">
@@ -37,7 +37,6 @@
         document.body.appendChild(renderer.domElement);
 
         scene.add(new THREE.AmbientLight(0xffffff, 0.2));
-        // プレイヤー周辺の補助光を少し弱めて蛍光灯を強調
         const pLight = new THREE.PointLight(0xffffcc, 1.2, 7);
         scene.add(pLight);
 
@@ -47,18 +46,17 @@
         const wallMat = new THREE.MeshStandardMaterial({ map: wallTex, color: 0xd9c585 });
         const floorMat = new THREE.MeshStandardMaterial({ color: 0x7e6e3d });
         const ceilingMat = new THREE.MeshStandardMaterial({ color: 0xeeeecc });
-        
-        // 【修正】蛍光灯自体を「光る素材」に変更
-        const lightMat = new THREE.MeshStandardMaterial({ 
-            color: 0xffffff,
-            emissive: 0xffffff, // 自発光の色
-            emissiveIntensity: 1.5 // 発光の強さ
-        });
+        const lightMat = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xffffff, emissiveIntensity: 1.5 });
 
-        const floor = new THREE.Mesh(new THREE.PlaneGeometry(100, 100), floorMat);
-        floor.rotation.x = -Math.PI/2; scene.add(floor);
-        const ceiling = new THREE.Mesh(new THREE.PlaneGeometry(100, 100), ceilingMat);
-        ceiling.rotation.x = Math.PI/2; ceiling.position.y = 3.8; scene.add(ceiling);
+        // 【修正】床と天井を巨大な1枚の板として定義（プレイヤーに追従させる）
+        const floor = new THREE.Mesh(new THREE.PlaneGeometry(200, 200), floorMat);
+        floor.rotation.x = -Math.PI/2; 
+        scene.add(floor);
+
+        const ceiling = new THREE.Mesh(new THREE.PlaneGeometry(200, 200), ceilingMat);
+        ceiling.rotation.x = Math.PI/2; 
+        ceiling.position.y = 3.8; 
+        scene.add(ceiling);
 
         const chunks = new Map();
         let colliders = [];
@@ -69,6 +67,10 @@
             const px = Math.round(camera.position.x / GRID_SIZE);
             const pz = Math.round(camera.position.z / GRID_SIZE);
 
+            // 天井と床をプレイヤーの位置に合わせて移動（無限に続くように見せる）
+            floor.position.set(camera.position.x, 0, camera.position.z);
+            ceiling.position.set(camera.position.x, 3.8, camera.position.z);
+
             for (let x = px - VIEW; x <= px + VIEW; x++) {
                 for (let z = pz - VIEW; z <= pz + VIEW; z++) {
                     const key = `${x},${z}`;
@@ -77,7 +79,7 @@
                         if (Math.abs(x) < 2 && Math.abs(z) < 2) { chunks.set(key, null); continue; }
 
                         if (x % 4 === 0 && z % 4 === 0) {
-                            // 2本の蛍光灯
+                            // 蛍光灯（天井板のすぐ下に配置）
                             const l1 = new THREE.Mesh(longLightGeo, lightMat);
                             const l2 = new THREE.Mesh(longLightGeo, lightMat);
                             l1.position.set(x * GRID_SIZE - 0.25, 3.79, z * GRID_SIZE);
@@ -85,13 +87,12 @@
                             l1.rotation.x = l2.rotation.x = Math.PI/2;
                             group.add(l1, l2);
 
-                            // 【修正】それぞれの板の直下にライトを配置
                             const p1 = new THREE.PointLight(0xffffdd, 0.4, 5);
                             p1.position.set(x * GRID_SIZE - 0.25, 3.6, z * GRID_SIZE);
                             const p2 = new THREE.PointLight(0xffffdd, 0.4, 5);
                             p2.position.set(x * GRID_SIZE + 0.25, 3.6, z * GRID_SIZE);
                             group.add(p1, p2);
-                        } else if (Math.sin(x*z) > 0.6) { // 壁の配置を少しランダムに
+                        } else if (Math.sin(x*z) > 0.6) {
                             const w = new THREE.Mesh(wallGeo, wallMat);
                             w.position.set(x * GRID_SIZE, 1.9, z * GRID_SIZE);
                             w.rotation.y = Math.sin(x+z) > 0 ? 0 : Math.PI/2;
@@ -102,7 +103,7 @@
                     }
                 }
             }
-            // (軽量化のための削除ロジックは継続)
+
             colliders = [];
             for (let [key, group] of chunks) {
                 const [cx, cz] = key.split(',').map(Number);
@@ -113,14 +114,13 @@
                     group.children.forEach(c => { if(c.type === "Mesh" && c.geometry.type === "BoxGeometry") colliders.push(c); });
                 }
             }
-            floor.position.set(camera.position.x, 0, camera.position.z);
-            ceiling.position.set(camera.position.x, 3.8, camera.position.z);
         }
 
-        // --- 操作系（変更なし） ---
+        // --- 操作・アニメーション（共通） ---
         let moveID = null, lookID = null, moveData = { x: 0, y: 0, startX: 0, startY: 0 }, lookData = { lastX: 0, lastY: 0 };
         let lon = 0, lat = 0, targetLon = 0, targetLat = 0;
         const joyBase = document.getElementById('joy-base'), joyKnob = document.getElementById('joy-knob');
+        
         window.addEventListener('touchstart', (e) => {
             for(let t of e.changedTouches) {
                 if(t.clientX < window.innerWidth/2 && moveID === null) {
@@ -154,6 +154,7 @@
                 if(t.identifier === lookID) lookID=null;
             }
         });
+
         const pBox = new THREE.Box3(), wBox = new THREE.Box3();
         function checkCol(pos) {
             pBox.setFromCenterAndSize(pos, new THREE.Vector3(0.5, 2.0, 0.5));
@@ -163,6 +164,7 @@
             }
             return false;
         }
+
         const dir = new THREE.Vector3(), side = new THREE.Vector3(), up = new THREE.Vector3(0,1,0);
         function animate() {
             requestAnimationFrame(animate);
