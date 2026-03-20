@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Backrooms - Lite Edition</title>
+    <title>Backrooms - Clean Lights</title>
     <style>
         body { margin: 0; overflow: hidden; background: #000; touch-action: none; font-family: sans-serif; }
         #ui { position: absolute; top: 20px; left: 20px; color: #ffff00; z-index: 5; text-shadow: 1px 1px #000; pointer-events: none; font-size: 10px; opacity: 0.7; }
@@ -12,7 +12,7 @@
     </style>
 </head>
 <body>
-    <div id="ui">LEVEL 0<br>【軽量化版】動作速度を優先しました。</div>
+    <div id="ui">LEVEL 0<br>蛍光灯と壁の重なりを修正しました。</div>
     <div id="joy-base"><div id="joy-knob"></div></div>
 
     <script type="importmap">
@@ -23,20 +23,20 @@
         import * as THREE from 'three';
 
         const GRID_SIZE = 5;
-        const VIEW = 5; // 描画範囲を8→5に縮小（劇的に軽くなります）
+        const VIEW = 5; 
         const scene = new THREE.Scene();
         scene.background = new THREE.Color(0x1a1a05);
-        scene.fog = new THREE.Fog(0x1a1a05, 1, 12); // 霧をさらに手前に
+        scene.fog = new THREE.Fog(0x1a1a05, 1, 12);
 
         const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.2, 50);
         camera.position.set(0, 1.6, 0);
 
         const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: "high-performance" });
         renderer.setSize(window.innerWidth, window.innerHeight);
-        renderer.setPixelRatio(1); // 解像度を抑えて速度優先
+        renderer.setPixelRatio(1);
         document.body.appendChild(renderer.domElement);
 
-        scene.add(new THREE.AmbientLight(0xffffff, 0.4));
+        scene.add(new THREE.AmbientLight(0xffffff, 0.3));
         const pLight = new THREE.PointLight(0xffffcc, 2.0, 10);
         scene.add(pLight);
 
@@ -74,25 +74,30 @@
                         if (Math.abs(x) < 2 && Math.abs(z) < 2) {
                             chunks.set(key, null); continue;
                         }
-                        if (x % 4 === 0 && z % 4 === 0) {
+
+                        // 1. まず蛍光灯の位置を決める（4グリッドおき）
+                        const isLightPos = (x % 4 === 0 && z % 4 === 0);
+                        
+                        if (isLightPos) {
                             const l = new THREE.Mesh(new THREE.PlaneGeometry(1.2, 0.6), lightMat);
                             l.position.set(x * GRID_SIZE, 3.79, z * GRID_SIZE);
                             l.rotation.x = Math.PI/2;
                             group.add(l);
-                        }
-                        if (pseudoRandom(x, z) < 0.4) {
+                            // 蛍光灯がある場所には壁を作らないようにする
+                        } else if (pseudoRandom(x, z) < 0.4) {
+                            // 2. 蛍光灯がない場所だけに壁を生成
                             const w = new THREE.Mesh(wallGeo, wallMat);
                             w.position.set(x * GRID_SIZE, 1.9, z * GRID_SIZE);
                             w.rotation.y = pseudoRandom(z, x) > 0.5 ? 0 : Math.PI/2;
                             group.add(w);
                         }
+
                         scene.add(group);
                         chunks.set(key, group);
                     }
                 }
             }
 
-            // 当たり判定用リストを近くのものだけに更新
             colliders = [];
             for (let [key, group] of chunks) {
                 const [cx, cz] = key.split(',').map(Number);
@@ -107,6 +112,7 @@
             ceiling.position.set(camera.position.x, 3.8, camera.position.z);
         }
 
+        // --- 操作系 ---
         let moveID = null, lookID = null;
         let moveData = { x: 0, y: 0, startX: 0, startY: 0 }, lookData = { lastX: 0, lastY: 0 };
         let lon = 0, lat = 0, targetLon = 0, targetLat = 0;
