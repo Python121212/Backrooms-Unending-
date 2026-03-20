@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Backrooms - Organized Pillars</title>
+    <title>Backrooms - Pillars & Lights Fixed</title>
     <style>
         body { margin: 0; overflow: hidden; background: #000; touch-action: none; font-family: sans-serif; }
         #ui { position: absolute; top: 20px; left: 20px; color: #ffff00; z-index: 5; text-shadow: 1px 1px #000; pointer-events: none; font-size: 12px; }
@@ -12,7 +12,7 @@
     </style>
 </head>
 <body>
-    <div id="ui">LEVEL 0<br>迷路 ＆ 整列した柱の広場</div>
+    <div id="ui">LEVEL 0<br>移動修正 ＆ 蛍光灯復活 ＆ 柱の広場</div>
     <div id="joy-base"><div id="joy-knob"></div></div>
 
     <script type="importmap">
@@ -23,10 +23,10 @@
         import * as THREE from 'three';
 
         const GRID_SIZE = 5;
-        const VIEW = 9;
+        const VIEW = 8;
         const scene = new THREE.Scene();
         scene.background = new THREE.Color(0x1a1a05);
-        scene.fog = new THREE.Fog(0x1a1a05, 1, 30);
+        scene.fog = new THREE.Fog(0x1a1a05, 1, 25);
 
         const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
         camera.position.set(0, 1.6, 0);
@@ -36,8 +36,8 @@
         renderer.setPixelRatio(1);
         document.body.appendChild(renderer.domElement);
 
-        scene.add(new THREE.AmbientLight(0xffffff, 0.45));
-        const pLight = new THREE.PointLight(0xffffcc, 2.0, 15);
+        scene.add(new THREE.AmbientLight(0xffffff, 0.4));
+        const pLight = new THREE.PointLight(0xffffcc, 1.8, 12);
         scene.add(pLight);
 
         const loader = new THREE.TextureLoader();
@@ -45,9 +45,11 @@
             tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
             tex.repeat.set(1.5, 1);
         });
+
         const wallMat = new THREE.MeshStandardMaterial({ map: wallTex, color: 0xd9c585 });
         const floorMat = new THREE.MeshStandardMaterial({ color: 0x8e7e4d });
         const ceilingMat = new THREE.MeshStandardMaterial({ color: 0xeeeecc });
+        const lightMat = new THREE.MeshBasicMaterial({ color: 0xffffff }); // 蛍光灯用
 
         const floor = new THREE.Mesh(new THREE.PlaneGeometry(200, 200), floorMat);
         floor.rotation.x = -Math.PI/2; scene.add(floor);
@@ -56,8 +58,9 @@
 
         const chunks = new Map();
         const walls = [];
-        const wallGeo = new THREE.BoxGeometry(GRID_SIZE, 3.8, 0.4);
-        const pillarGeo = new THREE.BoxGeometry(1.6, 3.8, 1.6); // 綺麗に並ぶ太い柱
+        const wallGeo = new THREE.BoxGeometry(GRID_SIZE, 3.8, 0.3);
+        const pillarGeo = new THREE.BoxGeometry(1.6, 3.8, 1.6);
+        const lightGeo = new THREE.PlaneGeometry(1.2, 0.5);
 
         function pseudoRandom(x, z) {
             const f = Math.sin(x * 12.9898 + z * 78.233) * 43758.5453;
@@ -73,44 +76,54 @@
                     const key = `${x},${z}`;
                     if (!chunks.has(key)) {
                         const rnd = pseudoRandom(x, z);
+                        const isGreatHall = (Math.abs(x % 12) < 3 && Math.abs(z % 12) < 3);
+                        const group = new THREE.Group();
                         
-                        // --- 広場か迷路かの判定 ---
-                        // 15マスおきに巨大な広場モード（5x5マスの空間）を生成
-                        const isGreatHall = (Math.abs(x % 15) < 3 && Math.abs(z % 15) < 3);
-                        
-                        let obj = null;
+                        // 1. 蛍光灯の配置 (4マスおきに天井に設置)
+                        if (x % 4 === 0 && z % 4 === 0) {
+                            const l = new THREE.Mesh(lightGeo, lightMat);
+                            l.position.set(x * GRID_SIZE, 3.79, z * GRID_SIZE);
+                            l.rotation.x = Math.PI/2;
+                            group.add(l);
+                        }
 
+                        // 2. 壁・柱の配置
                         if (isGreatHall) {
-                            // 広場モード：2マスおきに「綺麗に並んだ柱」を配置
                             if (x % 2 === 0 && z % 2 === 0) {
-                                obj = new THREE.Mesh(pillarGeo, wallMat);
-                                obj.position.set(x * GRID_SIZE, 1.9, z * GRID_SIZE);
+                                const p = new THREE.Mesh(pillarGeo, wallMat);
+                                p.position.set(x * GRID_SIZE, 1.9, z * GRID_SIZE);
+                                group.add(p);
+                                walls.push(p);
                             }
                         } else if (Math.abs(x) > 1 || Math.abs(z) > 1) {
-                            // 迷路モード：ランダムな壁
                             if (rnd < 0.35) {
-                                obj = new THREE.Mesh(wallGeo, wallMat);
-                                obj.position.set(x * GRID_SIZE, 1.9, z * GRID_SIZE);
-                                obj.rotation.y = pseudoRandom(z, x) > 0.5 ? 0 : Math.PI/2;
+                                const w = new THREE.Mesh(wallGeo, wallMat);
+                                w.position.set(x * GRID_SIZE, 1.9, z * GRID_SIZE);
+                                w.rotation.y = pseudoRandom(z, x) > 0.5 ? 0 : Math.PI/2;
+                                group.add(w);
+                                walls.push(w);
                             }
                         }
 
-                        if (obj) {
-                            scene.add(obj);
-                            walls.push(obj);
+                        if (group.children.length > 0) {
+                            scene.add(group);
+                            chunks.set(key, group);
+                        } else {
+                            chunks.set(key, null);
                         }
-                        chunks.set(key, obj);
                     }
                 }
             }
 
-            for (let [key, obj] of chunks) {
+            for (let [key, group] of chunks) {
                 const [cx, cz] = key.split(',').map(Number);
                 if (Math.abs(cx - px) > VIEW + 1 || Math.abs(cz - pz) > VIEW + 1) {
-                    if (obj) {
-                        scene.remove(obj);
-                        const idx = walls.indexOf(obj);
-                        if(idx > -1) walls.splice(idx, 1);
+                    if (group) {
+                        scene.remove(group);
+                        group.children.forEach(child => {
+                            const idx = walls.indexOf(child);
+                            if(idx > -1) walls.splice(idx, 1);
+                        });
                     }
                     chunks.delete(key);
                 }
@@ -119,7 +132,6 @@
             ceiling.position.set(camera.position.x, 3.8, camera.position.z);
         }
 
-        // --- 以下、操作・衝突判定ロジック（変更なし） ---
         let moveID = null, lookID = null;
         let moveData = { x: 0, y: 0, startX: 0, startY: 0 }, lookData = { lastX: 0, lastY: 0 };
         let lon = 0, lat = 0, targetLon = 0, targetLat = 0;
@@ -164,7 +176,8 @@
         const pBox = new THREE.Box3();
         const wBox = new THREE.Box3();
         function checkCol(pos) {
-            pBox.setFromCenterAndSize(pos, new THREE.Vector3(0.6, 2, 0.6));
+            // 当たり判定を少し小さく (0.6 -> 0.4) してスタックを防止
+            pBox.setFromCenterAndSize(pos, new THREE.Vector3(0.4, 2, 0.4));
             for (let w of walls) {
                 wBox.setFromObject(w);
                 if (pBox.intersectsBox(wBox)) return true;
