@@ -3,16 +3,16 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Backrooms - Super Lite</title>
+    <title>Backrooms - Light Fix</title>
     <style>
-        body { margin: 0; overflow: hidden; background: #1a1a05; touch-action: none; font-family: sans-serif; }
-        #ui { position: absolute; top: 20px; left: 20px; color: #ffff00; z-index: 5; text-shadow: 1px 1px #000; pointer-events: none; font-size: 10px; opacity: 0.5; }
-        #joy-base { position: absolute; width: 60px; height: 60px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 50%; display: none; }
-        #joy-knob { position: absolute; width: 24px; height: 24px; background: rgba(255,255,255,0.2); border-radius: 50%; left: 18px; top: 18px; }
+        body { margin: 0; overflow: hidden; background: #1a1a05; touch-action: none; }
+        #ui { position: absolute; top: 20px; left: 20px; color: #ffff00; z-index: 5; font-size: 10px; opacity: 0.7; pointer-events: none; }
+        #joy-base { position: absolute; width: 60px; height: 60px; background: rgba(255,255,255,0.1); border-radius: 50%; display: none; }
+        #joy-knob { position: absolute; width: 24px; height: 24px; background: rgba(255,255,255,0.3); border-radius: 50%; left: 18px; top: 18px; }
     </style>
 </head>
 <body>
-    <div id="ui">LEVEL 0<br>【超軽量版】判定と描画を最小限にしました。</div>
+    <div id="ui">LEVEL 0<br>蛍光灯の表示を修正しました。</div>
     <div id="joy-base"><div id="joy-knob"></div></div>
 
     <script type="importmap">
@@ -23,16 +23,16 @@
         import * as THREE from 'three';
 
         const GRID_SIZE = 5;
-        const VIEW = 4; // 描画範囲をさらに絞る
+        const VIEW = 4; 
         const scene = new THREE.Scene();
-        scene.fog = new THREE.Fog(0x1a1a05, 1, 10); // 霧を近くして隠す
+        scene.fog = new THREE.Fog(0x1a1a05, 1, 15);
 
-        const camera = new THREE.PerspectiveCamera(70, window.innerWidth/window.innerHeight, 0.5, 30);
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 40);
         camera.position.set(0, 1.6, 0);
 
-        const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: "high-performance" });
+        const renderer = new THREE.WebGLRenderer({ antialias: false });
         renderer.setSize(window.innerWidth, window.innerHeight);
-        renderer.setPixelRatio(0.8); // 解像度をあえて下げて爆速化
+        renderer.setPixelRatio(window.devicePixelRatio > 1 ? 1 : window.devicePixelRatio);
         document.body.appendChild(renderer.domElement);
 
         scene.add(new THREE.AmbientLight(0xffffff, 0.4));
@@ -41,12 +41,13 @@
 
         const loader = new THREE.TextureLoader();
         const wallTex = loader.load('wallpaper.jpg');
-        const wallMat = new THREE.MeshBasicMaterial({ map: wallTex, color: 0xd9c585 }); // StandardからBasicにして計算省略
+        
+        // 軽量な素材(Basic)を使用
+        const wallMat = new THREE.MeshBasicMaterial({ map: wallTex, color: 0xd9c585 });
         const floorMat = new THREE.MeshBasicMaterial({ color: 0x7e6e3d });
-        const ceilingMat = new THREE.MeshBasicMaterial({ color: 0xeeeecc });
-        const lightMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+        const ceilingMat = new THREE.MeshBasicMaterial({ color: 0xaaaa88 }); // 天井を少し明るく
+        const lightMat = new THREE.MeshBasicMaterial({ color: 0xffffff }); // 蛍光灯を白に固定
 
-        // 巨大な1枚の床と天井
         const floor = new THREE.Mesh(new THREE.PlaneGeometry(100, 100), floorMat);
         floor.rotation.x = -Math.PI/2; scene.add(floor);
         const ceiling = new THREE.Mesh(new THREE.PlaneGeometry(100, 100), ceilingMat);
@@ -54,8 +55,8 @@
 
         const chunks = new Map();
         let colliders = [];
-        const wallGeo = new THREE.BoxGeometry(GRID_SIZE + 0.1, 3.8, 0.4);
-        const longLightGeo = new THREE.PlaneGeometry(0.2, 2.5);
+        const wallGeo = new THREE.BoxGeometry(GRID_SIZE, 3.8, 0.3);
+        const longLightGeo = new THREE.PlaneGeometry(0.3, 3.0);
 
         function pseudoRandom(x, z) {
             const f = Math.sin(x * 12.98 + z * 78.23) * 43758.54;
@@ -76,13 +77,12 @@
                         const group = new THREE.Group();
                         if (Math.abs(x) < 2 && Math.abs(z) < 2) { chunks.set(key, null); continue; }
 
-                        const isLightPos = (x % 5 === 0 && z % 5 === 0);
-                        if (isLightPos) {
+                        if (x % 4 === 0 && z % 4 === 0) {
                             const l1 = new THREE.Mesh(longLightGeo, lightMat);
-                            l1.position.set(x * GRID_SIZE, 3.79, z * GRID_SIZE);
+                            l1.position.set(x * GRID_SIZE, 3.78, z * GRID_SIZE);
                             l1.rotation.x = Math.PI/2;
                             group.add(l1);
-                        } else if (pseudoRandom(x, z) < 0.35) {
+                        } else if (pseudoRandom(x, z) < 0.4) {
                             const w = new THREE.Mesh(wallGeo, wallMat);
                             w.position.set(x * GRID_SIZE, 1.9, z * GRID_SIZE);
                             w.rotation.y = pseudoRandom(z, x) > 0.5 ? 0 : Math.PI/2;
@@ -98,10 +98,7 @@
             for (let [key, group] of chunks) {
                 const [cx, cz] = key.split(',').map(Number);
                 if (Math.abs(cx - px) > VIEW || Math.abs(cz - pz) > VIEW) {
-                    if (group) {
-                        group.children.forEach(c => { if(c.geometry) c.geometry.dispose(); });
-                        scene.remove(group);
-                    }
+                    if (group) scene.remove(group);
                     chunks.delete(key);
                 } else if (group && Math.abs(cx - px) <= 1 && Math.abs(cz - pz) <= 1) {
                     group.children.forEach(c => { if(c.type === "Mesh" && c.geometry.type === "BoxGeometry") colliders.push(c); });
@@ -109,16 +106,17 @@
             }
         }
 
+        // --- 操作系 ---
         let moveID = null, lookID = null, moveData = { x: 0, y: 0, startX: 0, startY: 0 }, lookData = { lastX: 0, lastY: 0 };
         let lon = 0, lat = 0, targetLon = 0, targetLat = 0;
         const joyBase = document.getElementById('joy-base'), joyKnob = document.getElementById('joy-knob');
 
         window.addEventListener('touchstart', (e) => {
             for(let t of e.changedTouches) {
-                if(t.clientX < window.innerWidth/2) {
+                if(t.clientX < window.innerWidth/2 && moveID === null) {
                     moveID = t.identifier; moveData.startX = t.clientX; moveData.startY = t.clientY;
                     joyBase.style.display = 'block'; joyBase.style.left = (t.clientX-30)+'px'; joyBase.style.top = (t.clientY-30)+'px';
-                } else {
+                } else if(t.clientX >= window.innerWidth/2 && lookID === null) {
                     lookID = t.identifier; lookData.lastX = t.clientX; lookData.lastY = t.clientY;
                 }
             }
@@ -134,8 +132,8 @@
                     joyKnob.style.transform = `translate(${Math.cos(a)*d}px, ${Math.sin(a)*d}px)`;
                 }
                 if(t.identifier === lookID) {
-                    targetLon -= (t.clientX - lookData.lastX) * 0.35;
-                    targetLat -= (t.clientY - lookData.lastY) * 0.35;
+                    targetLon -= (t.clientX - lookData.lastX) * 0.3;
+                    targetLat -= (t.clientY - lookData.lastY) * 0.3;
                     targetLat = Math.max(-85, Math.min(85, targetLat));
                     lookData.lastX = t.clientX; lookData.lastY = t.clientY;
                 }
@@ -162,7 +160,7 @@
         const dir = new THREE.Vector3(), side = new THREE.Vector3(), up = new THREE.Vector3(0,1,0);
         function animate() {
             requestAnimationFrame(animate);
-            lon += (targetLon - lon) * 0.2; lat += (targetLat - lat) * 0.2;
+            lon += (targetLon - lon) * 0.15; lat += (targetLat - lat) * 0.15;
             camera.lookAt(new THREE.Vector3().setFromSphericalCoords(1, THREE.MathUtils.degToRad(90-lat), THREE.MathUtils.degToRad(lon)).add(camera.position));
             if(moveID !== null) {
                 camera.getWorldDirection(dir); dir.y = 0; dir.normalize();
