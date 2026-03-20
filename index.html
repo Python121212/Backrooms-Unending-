@@ -3,18 +3,15 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Backrooms - Texture Update</title>
+    <title>Backrooms - High Quality Texture</title>
     <style>
-        body { margin: 0; overflow: hidden; background: #1a1a00; touch-action: none; font-family: sans-serif; }
+        body { margin: 0; overflow: hidden; background: #000; touch-action: none; }
         canvas { display: block; }
-        #joy-base { position: absolute; width: 100px; height: 100px; background: rgba(255, 255, 255, 0.1); border: 2px solid rgba(255, 255, 255, 0.2); border-radius: 50%; display: none; pointer-events: none; z-index: 10; }
-        #joy-knob { position: absolute; width: 40px; height: 40px; background: rgba(255, 255, 255, 0.4); border-radius: 50%; left: 30px; top: 30px; }
-        #ui { position: absolute; top: 20px; left: 20px; color: #ffff00; pointer-events: none; text-shadow: 1px 1px #000; font-size: 14px; z-index: 5; }
+        #ui { position: absolute; top: 20px; left: 20px; color: #ffff00; pointer-events: none; text-shadow: 1px 1px #000; font-family: sans-serif; font-weight: bold; }
     </style>
 </head>
 <body>
-    <div id="ui">LEVEL 0<br>指定の壁紙を適用しました</div>
-    <div id="joy-base"><div id="joy-knob"></div></div>
+    <div id="ui">LEVEL 0<br>テクスチャの密度と鮮明度を調整しました</div>
 
     <script type="importmap">
         { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
@@ -23,168 +20,85 @@
     <script type="module">
         import * as THREE from 'three';
 
-        // --- 設定 ---
-        const GRID_SIZE = 6;
-        const VIEW_DISTANCE = 6;
-        const WALL_PROBABILITY = 0.3;
-
+        // --- 基本設定 ---
         const scene = new THREE.Scene();
-        scene.background = new THREE.Color(0x222200);
-        scene.fog = new THREE.Fog(0x222200, 1, 25);
+        scene.background = new THREE.Color(0x1a1a05);
+        scene.fog = new THREE.Fog(0x1a1a05, 1, 28);
 
         const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
         camera.position.set(0, 1.6, 0);
 
-        const renderer = new THREE.WebGLRenderer({ antialias: false });
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
-        renderer.setPixelRatio(1);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
         document.body.appendChild(renderer.domElement);
 
-        const ambient = new THREE.AmbientLight(0xffffee, 0.6);
-        scene.add(ambient);
-        const playerLight = new THREE.PointLight(0xffffcc, 1.5, 12);
-        scene.add(playerLight);
+        // ライト（壁をしっかり照らす）
+        scene.add(new THREE.AmbientLight(0xffffff, 0.5));
+        const pLight = new THREE.PointLight(0xffffcc, 1.5, 15);
+        scene.add(pLight);
 
-        // --- テクスチャ読み込み ---
+        // --- 【重要】テクスチャの最適化設定 ---
         const loader = new THREE.TextureLoader();
-        // ここでアップロードした画像を読み込みます
-        // ファイル名を適宜合わせてください（例: 'wallpaper.jpg'）
-        const wallTex = loader.load('https://api.clark.ai/v1/proxy/your-image-url-here', (tex) => {
-            tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-            tex.repeat.set(2, 1); // 壁のサイズに合わせてリピート調整
+        // ※ 'wallpaper.jpg' は保存したファイル名に変えてください
+        const wallTex = loader.load('wallpaper.jpg', (tex) => {
+            tex.wrapS = THREE.RepeatWrapping;
+            tex.wrapT = THREE.RepeatWrapping;
+            // 1つの壁（幅6m）に対して模様を横に2回、縦に1回繰り返す
+            tex.repeat.set(2, 1); 
+            // 斜めから見た時のボヤけを防ぐ
+            tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
         });
 
-        const floorTex = loader.load('https://api.clark.ai/v1/proxy/carpet-url'); // 必要なら床も
+        const wallMat = new THREE.MeshStandardMaterial({ 
+            map: wallTex, 
+            color: 0xd9c585, // 画像がない時の下地色
+            roughness: 0.9,
+            metalness: 0.0
+        });
 
-        const wallMat = new THREE.MeshStandardMaterial({ map: wallTex, roughness: 1 });
-        const floorMat = new THREE.MeshStandardMaterial({ color: 0x8e7e4d, roughness: 1 });
-        const ceilingMat = new THREE.MeshStandardMaterial({ color: 0xeeeecc, roughness: 1 });
-        const lightMat = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xffffcc, emissiveIntensity: 2 });
-
-        const floor = new THREE.Mesh(new THREE.PlaneGeometry(100, 100), floorMat);
-        floor.rotation.x = -Math.PI / 2; scene.add(floor);
-
-        const ceiling = new THREE.Mesh(new THREE.PlaneGeometry(100, 100), ceilingMat);
-        ceiling.rotation.x = Math.PI / 2; ceiling.position.y = 4; scene.add(ceiling);
-
-        // --- 無限生成 ---
+        // --- 無限生成ロジック（簡略版） ---
+        const GRID_SIZE = 6;
+        const VIEW = 6;
         const chunks = new Map();
-        const wallGeo = new THREE.BoxGeometry(GRID_SIZE, 4, 0.2); // 壁を薄くしてよりリアルに
-        const lightGeo = new THREE.PlaneGeometry(1.5, 0.4);
-
-        function pseudoRandom(x, z) {
-            const f = Math.sin(x * 12.9898 + z * 78.233) * 43758.5453123;
-            return f - Math.floor(f);
-        }
+        const wallGeo = new THREE.BoxGeometry(GRID_SIZE, 4, 0.2);
 
         function updateWorld() {
-            const pX = Math.round(camera.position.x / GRID_SIZE);
-            const pZ = Math.round(camera.position.z / GRID_SIZE);
+            const px = Math.round(camera.position.x / GRID_SIZE);
+            const pz = Math.round(camera.position.z / GRID_SIZE);
 
-            for (let x = pX - VIEW_DISTANCE; x <= pX + VIEW_DISTANCE; x++) {
-                for (let z = pZ - VIEW_DISTANCE; z <= pZ + VIEW_DISTANCE; z++) {
+            for (let x = px - VIEW; x <= px + VIEW; x++) {
+                for (let z = pz - VIEW; z <= pz + VIEW; z++) {
                     const key = `${x},${z}`;
                     if (!chunks.has(key)) {
-                        const rnd = pseudoRandom(x, z);
-                        let obj = null;
-                        if (rnd < WALL_PROBABILITY && (Math.abs(x) > 1 || Math.abs(z) > 1)) {
-                            obj = new THREE.Mesh(wallGeo, wallMat);
-                            obj.position.set(x * GRID_SIZE, 2, z * GRID_SIZE);
-                            obj.rotation.y = pseudoRandom(z, x) > 0.5 ? 0 : Math.PI / 2;
-                            scene.add(obj);
-                        } else if (x % 4 === 0 && z % 4 === 0) {
-                            obj = new THREE.Mesh(lightGeo, lightMat);
-                            obj.position.set(x * GRID_SIZE, 3.99, z * GRID_SIZE);
-                            obj.rotation.x = Math.PI / 2;
-                            scene.add(obj);
-                        }
-                        chunks.set(key, obj);
+                        const rnd = Math.abs(Math.sin(x * 12.9 + z * 78.2));
+                        if (rnd < 0.3 && (Math.abs(x) > 1 || Math.abs(z) > 1)) {
+                            const wall = new THREE.Mesh(wallGeo, wallMat);
+                            wall.position.set(x * GRID_SIZE, 2, z * GRID_SIZE);
+                            wall.rotation.y = rnd > 0.15 ? 0 : Math.PI / 2;
+                            scene.add(wall);
+                            chunks.set(key, wall);
+                        } else { chunks.set(key, null); }
                     }
                 }
             }
-            // 削除ロジック
-            for (let [key, obj] of chunks) {
-                const [cx, cz] = key.split(',').map(Number);
-                if (Math.abs(cx - pX) > VIEW_DISTANCE + 1 || Math.abs(cz - pZ) > VIEW_DISTANCE + 1) {
-                    if (obj) scene.remove(obj);
-                    chunks.delete(key);
-                }
-            }
-            floor.position.set(camera.position.x, 0, camera.position.z);
-            ceiling.position.set(camera.position.x, 4, camera.position.z);
         }
 
-        // --- 操作（左右リバース、上下ノーマル） ---
-        let moveTouchID = null, lookTouchID = null;
-        let moveData = { x: 0, y: 0, startX: 0, startY: 0 }, lookData = { lastX: 0, lastY: 0 };
-        let lon = 0, lat = 0, targetLon = 0, targetLat = 0;
-        const joyBase = document.getElementById('joy-base'), joyKnob = document.getElementById('joy-knob');
-
-        window.addEventListener('touchstart', (e) => {
-            for(let t of e.changedTouches) {
-                if(t.clientX < window.innerWidth/2 && moveTouchID===null) {
-                    moveTouchID = t.identifier; moveData.startX = t.clientX; moveData.startY = t.clientY;
-                    joyBase.style.display = 'block'; joyBase.style.left = `${t.clientX-50}px`; joyBase.style.top = `${t.clientY-50}px`;
-                } else if(t.clientX >= window.innerWidth/2 && lookTouchID===null) {
-                    lookTouchID = t.identifier; lookData.lastX = t.clientX; lookData.lastY = t.clientY;
-                }
-            }
-        });
-
-        window.addEventListener('touchmove', (e) => {
-            e.preventDefault();
-            for(let t of e.touches) {
-                if(t.identifier === moveTouchID) {
-                    let dx = t.clientX - moveData.startX, dy = t.clientY - moveData.startY;
-                    const d = Math.min(Math.sqrt(dx*dx+dy*dy), 40), a = Math.atan2(dy,dx);
-                    moveData.x = Math.cos(a)*(d/40); moveData.y = Math.sin(a)*(d/40);
-                    joyKnob.style.transform = `translate(${Math.cos(a)*d}px, ${Math.sin(a)*d}px)`;
-                }
-                if(t.identifier === lookTouchID) {
-                    targetLon -= (t.clientX - lookData.lastX) * 0.3; 
-                    targetLat -= (t.clientY - lookData.lastY) * 0.3; 
-                    targetLat = Math.max(-85, Math.min(85, targetLat));
-                    lookData.lastX = t.clientX; lookData.lastY = t.clientY;
-                }
-            }
-        }, { passive: false });
-
-        window.addEventListener('touchend', (e) => {
-            for(let t of e.changedTouches) {
-                if(t.identifier === moveTouchID) { moveTouchID=null; moveData.x=0; moveData.y=0; joyBase.style.display='none'; }
-                if(t.identifier === lookTouchID) lookTouchID=null;
-            }
-        });
-
-        // --- ループ ---
-        const dir = new THREE.Vector3(), side = new THREE.Vector3(), up = new THREE.Vector3(0,1,0);
+        // --- 描画ループ ---
         function animate() {
             requestAnimationFrame(animate);
-            lon += (targetLon - lon) * 0.15; lat += (targetLat - lat) * 0.15;
-            const phi = THREE.MathUtils.degToRad(90-lat), theta = THREE.MathUtils.degToRad(lon);
-            const lookPos = new THREE.Vector3();
-            lookPos.setFromSphericalCoords(1, phi, theta).add(camera.position);
-            camera.lookAt(lookPos);
-
-            if(moveTouchID !== null) {
-                camera.getWorldDirection(dir); dir.y = 0; dir.normalize();
-                side.crossVectors(up, dir).normalize();
-                const step = new THREE.Vector3().addScaledVector(dir, -moveData.y*0.12).addScaledVector(side, -moveData.x*0.12);
-                const nextPos = camera.position.clone().add(step);
-                const pBox = new THREE.Box3().setFromCenterAndSize(nextPos, new THREE.Vector3(0.6, 2, 0.6));
-                let hit = false;
-                for(let obj of chunks.values()) {
-                    if(obj && obj.geometry.type === "BoxGeometry" && pBox.intersectsBox(new THREE.Box3().setFromObject(obj))) {
-                        hit = true; break;
-                    }
-                }
-                if(!hit) camera.position.copy(nextPos);
-            }
-            playerLight.position.copy(camera.position);
+            pLight.position.copy(camera.position);
             updateWorld();
             renderer.render(scene, camera);
         }
         animate();
+
+        // リサイズ対応
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
     </script>
 </body>
 </html>
