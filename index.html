@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Backrooms - Movement Unstuck</title>
+    <title>Backrooms - Sliding Movement</title>
     <style>
         body { margin: 0; overflow: hidden; background: #000; touch-action: none; font-family: sans-serif; }
         #ui { position: absolute; top: 20px; left: 20px; color: #ffff00; z-index: 5; text-shadow: 1px 1px #000; pointer-events: none; font-size: 12px; }
@@ -12,7 +12,7 @@
     </style>
 </head>
 <body>
-    <div id="ui">LEVEL 0<br>【脱出機能実装】壁にハマっても動けるようにしました</div>
+    <div id="ui">LEVEL 0<br>【壁スライド実装】壁にぶつかっても横に滑って進めます</div>
     <div id="joy-base"><div id="joy-knob"></div></div>
 
     <script type="importmap">
@@ -36,7 +36,7 @@
         renderer.setPixelRatio(1);
         document.body.appendChild(renderer.domElement);
 
-        scene.add(new THREE.AmbientLight(0xffffff, 0.4));
+        scene.add(new THREE.AmbientLight(0xffffff, 0.5));
         const pLight = new THREE.PointLight(0xffffcc, 2.0, 12);
         scene.add(pLight);
 
@@ -78,7 +78,6 @@
                         const rnd = pseudoRandom(x, z);
                         const group = new THREE.Group();
                         
-                        // 初期位置周辺を空ける
                         if (Math.abs(x) < 2 && Math.abs(z) < 2) {
                             chunks.set(key, null);
                             continue;
@@ -92,13 +91,7 @@
                         }
 
                         let mesh = null;
-                        const isGreatHall = (Math.abs(x % 10) < 3 && Math.abs(z % 10) < 3);
-                        if (isGreatHall) {
-                            if (x % 2 === 0 && z % 2 === 0) {
-                                mesh = new THREE.Mesh(pillarGeo, wallMat);
-                                mesh.position.set(x * GRID_SIZE, 1.9, z * GRID_SIZE);
-                            }
-                        } else if (rnd < 0.28) {
+                        if (rnd < 0.28) {
                             mesh = new THREE.Mesh(wallGeo, wallMat);
                             mesh.position.set(x * GRID_SIZE, 1.9, z * GRID_SIZE);
                             mesh.rotation.y = pseudoRandom(z, x) > 0.5 ? 0 : Math.PI/2;
@@ -157,26 +150,15 @@
             }
         });
 
-        // --- 改善された当たり判定 ---
-        const playerBox = new THREE.Box3();
-        const wallBox = new THREE.Box3();
-        
-        function resolveCollision() {
-            // プレイヤーの判定サイズ（少し余裕を持たせる）
-            playerBox.setFromCenterAndSize(camera.position, new THREE.Vector3(0.6, 2.0, 0.6));
-            
-            for (let wall of colliders) {
-                wallBox.setFromObject(wall);
-                if (playerBox.intersectsBox(wallBox)) {
-                    // めり込んだ場合、壁の中心から反対方向に押し出す
-                    const diff = camera.position.clone().sub(wall.position);
-                    if (Math.abs(diff.x) > Math.abs(diff.z)) {
-                        camera.position.x += diff.x > 0 ? 0.1 : -0.1;
-                    } else {
-                        camera.position.z += diff.z > 0 ? 0.1 : -0.1;
-                    }
-                }
+        const pBox = new THREE.Box3();
+        const wBox = new THREE.Box3();
+        function checkCol(pos) {
+            pBox.setFromCenterAndSize(pos, new THREE.Vector3(0.4, 2.0, 0.4));
+            for (let w of colliders) {
+                wBox.setFromObject(w);
+                if (pBox.intersectsBox(wBox)) return true;
             }
+            return false;
         }
 
         const dir = new THREE.Vector3(), side = new THREE.Vector3(), up = new THREE.Vector3(0,1,0);
@@ -189,13 +171,21 @@
                 camera.getWorldDirection(dir); dir.y = 0; dir.normalize();
                 side.crossVectors(up, dir).normalize();
                 const speed = 0.15;
-                camera.position.x += (dir.x * -moveData.y + side.x * -moveData.x) * speed;
-                camera.position.z += (dir.z * -moveData.y + side.z * -moveData.x) * speed;
+                const vx = (dir.x * -moveData.y + side.x * -moveData.x) * speed;
+                const vz = (dir.z * -moveData.y + side.z * -moveData.x) * speed;
+                
+                // --- スライド移動のコアロジック ---
+                // 1. まず現在の位置をコピー
+                const nextX = camera.position.clone();
+                nextX.x += vx;
+                // 2. X方向だけで判定。通れるならXだけ進む
+                if (!checkCol(nextX)) camera.position.x = nextX.x;
+
+                const nextZ = camera.position.clone();
+                nextZ.z += vz;
+                // 3. Z方向だけで判定。通れるならZだけ進む
+                if (!checkCol(nextZ)) camera.position.z = nextZ.z;
             }
-            
-            // 常に衝突解決を実行
-            resolveCollision();
-            
             pLight.position.copy(camera.position);
             updateWorld();
             renderer.render(scene, camera);
