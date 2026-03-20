@@ -3,16 +3,16 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Backrooms - Complex Maze</title>
+    <title>Backrooms - Pillars & Halls</title>
     <style>
         body { margin: 0; overflow: hidden; background: #000; touch-action: none; font-family: sans-serif; }
-        #ui { position: absolute; top: 20px; left: 20px; color: #ffff00; z-index: 5; text-shadow: 1px 1px #000; pointer-events: none; font-size: 12px; opacity: 0.7; }
+        #ui { position: absolute; top: 20px; left: 20px; color: #ffff00; z-index: 5; text-shadow: 1px 1px #000; pointer-events: none; font-size: 12px; }
         #joy-base { position: absolute; width: 100px; height: 100px; background: rgba(255,255,255,0.1); border: 2px solid rgba(255,255,255,0.2); border-radius: 50%; display: none; }
         #joy-knob { position: absolute; width: 40px; height: 40px; background: rgba(255,255,255,0.4); border-radius: 50%; left: 30px; top: 30px; }
     </style>
 </head>
 <body>
-    <div id="ui">LEVEL 0<br>迷路密度：HIGH<br>壁紙：wallpaper.jpg</div>
+    <div id="ui">LEVEL 0<br>長い壁 ＆ 四角い柱 ＆ 広場</div>
     <div id="joy-base"><div id="joy-knob"></div></div>
 
     <script type="importmap">
@@ -22,14 +22,11 @@
     <script type="module">
         import * as THREE from 'three';
 
-        // --- 設定（迷路を複雑にするために調整） ---
-        const GRID_SIZE = 5; // 少し狭くした
-        const VIEW = 8;      // 迷路が深いので描画距離を少し維持
-        const WALL_CHANCE = 0.45; // 壁の確率を大幅アップ（30% -> 45%）
-
+        const GRID_SIZE = 5;
+        const VIEW = 8;
         const scene = new THREE.Scene();
-        scene.background = new THREE.Color(0x151500);
-        scene.fog = new THREE.Fog(0x151500, 1, 22); // 霧を濃くして先を見えなくした
+        scene.background = new THREE.Color(0x1a1a05);
+        scene.fog = new THREE.Fog(0x1a1a05, 1, 28);
 
         const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
         camera.position.set(0, 1.6, 0);
@@ -39,30 +36,30 @@
         renderer.setPixelRatio(1);
         document.body.appendChild(renderer.domElement);
 
-        scene.add(new THREE.AmbientLight(0xffffff, 0.5));
-        const pLight = new THREE.PointLight(0xffffcc, 1.8, 12);
+        scene.add(new THREE.AmbientLight(0xffffff, 0.4));
+        const pLight = new THREE.PointLight(0xffffcc, 2.0, 14);
         scene.add(pLight);
 
         // --- テクスチャ ---
         const loader = new THREE.TextureLoader();
         const wallTex = loader.load('wallpaper.jpg', (tex) => {
             tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-            tex.repeat.set(1.5, 1); 
-            tex.anisotropy = 4;
+            tex.repeat.set(1.5, 1);
         });
         const wallMat = new THREE.MeshStandardMaterial({ map: wallTex, color: 0xd9c585 });
-        const floorMat = new THREE.MeshStandardMaterial({ color: 0x7e6e3d });
-        const ceilingMat = new THREE.MeshStandardMaterial({ color: 0xccccaa });
+        const floorMat = new THREE.MeshStandardMaterial({ color: 0x8e7e4d });
+        const ceilingMat = new THREE.MeshStandardMaterial({ color: 0xeeeecc });
 
         const floor = new THREE.Mesh(new THREE.PlaneGeometry(200, 200), floorMat);
         floor.rotation.x = -Math.PI/2; scene.add(floor);
         const ceiling = new THREE.Mesh(new THREE.PlaneGeometry(200, 200), ceilingMat);
-        ceiling.rotation.x = Math.PI/2; ceiling.position.y = 3.5; scene.add(ceiling);
+        ceiling.rotation.x = Math.PI/2; ceiling.position.y = 3.8; scene.add(ceiling);
 
-        // --- 迷路生成 ---
+        // --- 地形生成 ---
         const chunks = new Map();
         const walls = [];
-        const wallGeo = new THREE.BoxGeometry(GRID_SIZE + 0.2, 3.5, 0.5);
+        const wallGeo = new THREE.BoxGeometry(GRID_SIZE, 3.8, 0.4);
+        const pillarGeo = new THREE.BoxGeometry(1.5, 3.8, 1.5); // 四角い柱のサイズ
 
         function pseudoRandom(x, z) {
             const f = Math.sin(x * 12.9898 + z * 78.233) * 43758.5453;
@@ -78,38 +75,52 @@
                     const key = `${x},${z}`;
                     if (!chunks.has(key)) {
                         const rnd = pseudoRandom(x, z);
-                        // 開始地点(0,0)付近以外に高密度で壁を配置
-                        if (rnd < WALL_CHANCE && (Math.abs(x) > 1 || Math.abs(z) > 1)) {
-                            const wall = new THREE.Mesh(wallGeo, wallMat);
-                            wall.position.set(x * GRID_SIZE, 1.75, z * GRID_SIZE);
-                            // 縦横の向きをより複雑に
-                            wall.rotation.y = pseudoRandom(z, x) > 0.5 ? 0 : Math.PI/2;
-                            scene.add(wall);
-                            chunks.set(key, wall);
-                            walls.push(wall);
-                        } else {
+                        let obj = null;
+
+                        // (0,0)付近は平坦にする
+                        if (Math.abs(x) < 2 && Math.abs(z) < 2) {
                             chunks.set(key, null);
+                            continue;
                         }
+
+                        // --- 生成ロジックの分岐 ---
+                        if (rnd < 0.12) {
+                            // 四角い柱を配置
+                            obj = new THREE.Mesh(pillarGeo, wallMat);
+                            obj.position.set(x * GRID_SIZE + (rnd*2-1), 1.9, z * GRID_SIZE + (rnd*2-1));
+                        } else if (rnd < 0.38) {
+                            // 通常の壁（長い通路になりやすいよう回転を少し制御）
+                            obj = new THREE.Mesh(wallGeo, wallMat);
+                            obj.position.set(x * GRID_SIZE, 1.9, z * GRID_SIZE);
+                            obj.rotation.y = pseudoRandom(z, x) > 0.45 ? 0 : Math.PI/2;
+                        }
+                        // rndが0.38以上の時は「空きスペース（広場）」になる
+
+                        if (obj) {
+                            scene.add(obj);
+                            walls.push(obj);
+                        }
+                        chunks.set(key, obj);
                     }
                 }
             }
 
-            for (let [key, wall] of chunks) {
+            for (let [key, obj] of chunks) {
                 const [cx, cz] = key.split(',').map(Number);
                 if (Math.abs(cx - px) > VIEW + 1 || Math.abs(cz - pz) > VIEW + 1) {
-                    if (wall) {
-                        scene.remove(wall);
-                        const idx = walls.indexOf(wall);
+                    if (obj) {
+                        scene.remove(obj);
+                        const idx = walls.indexOf(obj);
                         if(idx > -1) walls.splice(idx, 1);
                     }
                     chunks.delete(key);
                 }
             }
             floor.position.set(camera.position.x, 0, camera.position.z);
-            ceiling.position.set(camera.position.x, 3.5, camera.position.z);
+            ceiling.position.set(camera.position.x, 3.8, camera.position.z);
         }
 
-        // --- 操作系 ---
+        // --- 操作系（左右リバース・上下ノーマル） ---
         let moveID = null, lookID = null;
         let moveData = { x: 0, y: 0, startX: 0, startY: 0 }, lookData = { lastX: 0, lastY: 0 };
         let lon = 0, lat = 0, targetLon = 0, targetLat = 0;
@@ -152,42 +163,39 @@
         });
 
         // --- 衝突判定 ---
-        const playerBox = new THREE.Box3();
-        const wallBox = new THREE.Box3();
-        function checkCollision(pos) {
-            playerBox.setFromCenterAndSize(pos, new THREE.Vector3(0.6, 2, 0.6));
-            for (let wall of walls) {
-                wallBox.setFromObject(wall);
-                if (playerBox.intersectsBox(wallBox)) return true;
+        const pBox = new THREE.Box3();
+        const wBox = new THREE.Box3();
+        function checkCol(pos) {
+            pBox.setFromCenterAndSize(pos, new THREE.Vector3(0.6, 2, 0.6));
+            for (let w of walls) {
+                wBox.setFromObject(w);
+                if (pBox.intersectsBox(wBox)) return true;
             }
             return false;
         }
 
-        // --- ループ ---
-        const dir = new THREE.Vector3(), side = new THREE.Vector3(), up = new THREE.Vector3(0,1,0);
         function animate() {
             requestAnimationFrame(animate);
-            lon += (targetLon - lon) * 0.2; lat += (targetLat - lat) * 0.2;
-            const phi = THREE.MathUtils.degToRad(90-lat), theta = THREE.MathUtils.degToRad(lon);
+            lon += (targetLon - lon) * 0.15; lat += (targetLat - lat) * 0.15;
             const lookPos = new THREE.Vector3();
-            lookPos.setFromSphericalCoords(1, phi, theta).add(camera.position);
+            lookPos.setFromSphericalCoords(1, THREE.MathUtils.degToRad(90-lat), THREE.MathUtils.degToRad(lon)).add(camera.position);
             camera.lookAt(lookPos);
 
             if(moveID !== null) {
                 camera.getWorldDirection(dir); dir.y = 0; dir.normalize();
                 side.crossVectors(up, dir).normalize();
-                const step = new THREE.Vector3().addScaledVector(dir, -moveData.y*0.11).addScaledVector(side, -moveData.x*0.11);
+                const step = new THREE.Vector3().addScaledVector(dir, -moveData.y*0.12).addScaledVector(side, -moveData.x*0.12);
                 
-                const nextX = camera.position.clone(); nextX.x += step.x;
-                if(!checkCollision(nextX)) camera.position.x = nextX.x;
-                const nextZ = camera.position.clone(); nextZ.z += step.z;
-                if(!checkCollision(nextZ)) camera.position.z = nextZ.z;
+                const nX = camera.position.clone(); nX.x += step.x;
+                if(!checkCol(nX)) camera.position.x = nX.x;
+                const nZ = camera.position.clone(); nZ.z += step.z;
+                if(!checkCol(nZ)) camera.position.z = nZ.z;
             }
-
             pLight.position.copy(camera.position);
             updateWorld();
             renderer.render(scene, camera);
         }
+        const dir = new THREE.Vector3(), side = new THREE.Vector3(), up = new THREE.Vector3(0,1,0);
         animate();
     </script>
 </body>
