@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Backrooms - No Clipping</title>
+    <title>Backrooms - Movement Unstuck</title>
     <style>
         body { margin: 0; overflow: hidden; background: #000; touch-action: none; font-family: sans-serif; }
         #ui { position: absolute; top: 20px; left: 20px; color: #ffff00; z-index: 5; text-shadow: 1px 1px #000; pointer-events: none; font-size: 12px; }
@@ -12,7 +12,7 @@
     </style>
 </head>
 <body>
-    <div id="ui">LEVEL 0<br>【最新版】壁の透けを完全に封鎖しました</div>
+    <div id="ui">LEVEL 0<br>【脱出機能実装】壁にハマっても動けるようにしました</div>
     <div id="joy-base"><div id="joy-knob"></div></div>
 
     <script type="importmap">
@@ -28,7 +28,7 @@
         scene.background = new THREE.Color(0x1a1a05);
         scene.fog = new THREE.Fog(0x1a1a05, 1, 20);
 
-        const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.3, 1000);
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
         camera.position.set(0, 1.6, 0);
 
         const renderer = new THREE.WebGLRenderer({ antialias: false });
@@ -37,7 +37,7 @@
         document.body.appendChild(renderer.domElement);
 
         scene.add(new THREE.AmbientLight(0xffffff, 0.4));
-        const pLight = new THREE.PointLight(0xffffcc, 2.2, 12);
+        const pLight = new THREE.PointLight(0xffffcc, 2.0, 12);
         scene.add(pLight);
 
         const loader = new THREE.TextureLoader();
@@ -58,9 +58,8 @@
 
         const chunks = new Map();
         const colliders = [];
-        // 壁の厚みを1メートル(1.0)にし、中身を完全に見せないように強化
-        const wallGeo = new THREE.BoxGeometry(GRID_SIZE, 3.8, 1.0);
-        const pillarGeo = new THREE.BoxGeometry(2.5, 3.8, 2.5);
+        const wallGeo = new THREE.BoxGeometry(GRID_SIZE, 3.8, 0.8);
+        const pillarGeo = new THREE.BoxGeometry(2, 3.8, 2);
         const lightGeo = new THREE.PlaneGeometry(1.5, 0.8);
 
         function pseudoRandom(x, z) {
@@ -77,11 +76,10 @@
                     const key = `${x},${z}`;
                     if (!chunks.has(key)) {
                         const rnd = pseudoRandom(x, z);
-                        const isGreatHall = (Math.abs(x % 10) < 3 && Math.abs(z % 10) < 3);
                         const group = new THREE.Group();
                         
-                        // 初期スポーン位置（半径10m以内）は空き地にする
-                        if (Math.sqrt(x*x + z*z) < 2) {
+                        // 初期位置周辺を空ける
+                        if (Math.abs(x) < 2 && Math.abs(z) < 2) {
                             chunks.set(key, null);
                             continue;
                         }
@@ -94,6 +92,7 @@
                         }
 
                         let mesh = null;
+                        const isGreatHall = (Math.abs(x % 10) < 3 && Math.abs(z % 10) < 3);
                         if (isGreatHall) {
                             if (x % 2 === 0 && z % 2 === 0) {
                                 mesh = new THREE.Mesh(pillarGeo, wallMat);
@@ -114,22 +113,6 @@
                     }
                 }
             }
-
-            for (let [key, group] of chunks) {
-                const [cx, cz] = key.split(',').map(Number);
-                if (Math.abs(cx - px) > VIEW + 1 || Math.abs(cz - pz) > VIEW + 1) {
-                    if (group) {
-                        scene.remove(group);
-                        group.children.forEach(c => {
-                            const i = colliders.indexOf(c);
-                            if(i > -1) colliders.splice(i, 1);
-                        });
-                    }
-                    chunks.delete(key);
-                }
-            }
-            floor.position.set(camera.position.x, 0, camera.position.z);
-            ceiling.position.set(camera.position.x, 3.8, camera.position.z);
         }
 
         // --- 操作系 ---
@@ -174,16 +157,26 @@
             }
         });
 
-        const pBox = new THREE.Box3();
-        const wBox = new THREE.Box3();
-        function checkCol(pos) {
-            // カメラの当たり判定（厚み）をさらに大きく (0.8) して壁へのめり込みを物理的に阻止
-            pBox.setFromCenterAndSize(pos, new THREE.Vector3(0.8, 2.0, 0.8));
-            for (let w of colliders) {
-                wBox.setFromObject(w);
-                if (pBox.intersectsBox(wBox)) return true;
+        // --- 改善された当たり判定 ---
+        const playerBox = new THREE.Box3();
+        const wallBox = new THREE.Box3();
+        
+        function resolveCollision() {
+            // プレイヤーの判定サイズ（少し余裕を持たせる）
+            playerBox.setFromCenterAndSize(camera.position, new THREE.Vector3(0.6, 2.0, 0.6));
+            
+            for (let wall of colliders) {
+                wallBox.setFromObject(wall);
+                if (playerBox.intersectsBox(wallBox)) {
+                    // めり込んだ場合、壁の中心から反対方向に押し出す
+                    const diff = camera.position.clone().sub(wall.position);
+                    if (Math.abs(diff.x) > Math.abs(diff.z)) {
+                        camera.position.x += diff.x > 0 ? 0.1 : -0.1;
+                    } else {
+                        camera.position.z += diff.z > 0 ? 0.1 : -0.1;
+                    }
+                }
             }
-            return false;
         }
 
         const dir = new THREE.Vector3(), side = new THREE.Vector3(), up = new THREE.Vector3(0,1,0);
@@ -195,20 +188,14 @@
             if(moveID !== null) {
                 camera.getWorldDirection(dir); dir.y = 0; dir.normalize();
                 side.crossVectors(up, dir).normalize();
-                
                 const speed = 0.15;
-                const vx = (dir.x * -moveData.y + side.x * -moveData.x) * speed;
-                const vz = (dir.z * -moveData.y + side.z * -moveData.x) * speed;
-                
-                const nPos = camera.position.clone();
-                nPos.x += vx;
-                if(!checkCol(nPos)) camera.position.x = nPos.x;
-                
-                nPos.copy(camera.position);
-                nPos.z += vz;
-                if(!checkCol(nPos)) camera.position.z = nZ.z; // 変数名を修正して適用
-                camera.position.z += (!checkCol(new THREE.Vector3(camera.position.x, camera.position.y, camera.position.z + vz))) ? vz : 0;
+                camera.position.x += (dir.x * -moveData.y + side.x * -moveData.x) * speed;
+                camera.position.z += (dir.z * -moveData.y + side.z * -moveData.x) * speed;
             }
+            
+            // 常に衝突解決を実行
+            resolveCollision();
+            
             pLight.position.copy(camera.position);
             updateWorld();
             renderer.render(scene, camera);
