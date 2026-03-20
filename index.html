@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Backrooms - Infinite Generation</title>
+    <title>Backrooms - Inverted Controls</title>
     <style>
         body { margin: 0; overflow: hidden; background: #1a1a00; touch-action: none; font-family: sans-serif; }
         canvas { display: block; }
@@ -14,7 +14,7 @@
     </style>
 </head>
 <body>
-    <div id="ui">LEVEL 0<br>どこまで歩いても壁が生成されます</div>
+    <div id="ui">LEVEL 0<br>視点操作：リバース（反転）設定</div>
     <div id="crosshair">+</div>
     <div id="joy-base"><div id="joy-knob"></div></div>
 
@@ -25,14 +25,14 @@
     <script type="module">
         import * as THREE from 'three';
 
-        // --- 設定値 ---
-        const GRID_SIZE = 6;      // 壁を配置するマスの大きさ
-        const VIEW_DISTANCE = 6;  // プレイヤーの周囲何マス分を生成するか
-        const WALL_PROBABILITY = 0.3; // 壁が発生する確率 (0.0 ~ 1.0)
+        // --- 設定 ---
+        const GRID_SIZE = 6;
+        const VIEW_DISTANCE = 6;
+        const WALL_PROBABILITY = 0.3;
 
         const scene = new THREE.Scene();
         scene.background = new THREE.Color(0x1a1a00);
-        scene.fog = new THREE.Fog(0x1a1a00, 1, 30); // 霧を濃くして生成境界を隠す
+        scene.fog = new THREE.Fog(0x1a1a00, 1, 30);
 
         const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
         camera.position.set(0, 1.6, 0);
@@ -46,7 +46,7 @@
         const light = new THREE.PointLight(0xffffcc, 1.5, 15);
         scene.add(light);
 
-        // --- 質感生成 ---
+        // --- テクスチャ & 床 ---
         const createTex = (c) => {
             const cv = document.createElement('canvas'); cv.width = 128; cv.height = 128;
             const cx = cv.getContext('2d'); cx.fillStyle = c; cx.fillRect(0,0,128,128);
@@ -58,11 +58,10 @@
         floor.rotation.x = -Math.PI / 2;
         scene.add(floor);
 
-        // --- 無限生成システム ---
-        const chunks = new Map(); // 生成済みの壁を座標キーで管理
+        // --- 無限生成 ---
+        const chunks = new Map();
         const wallGeo = new THREE.BoxGeometry(GRID_SIZE, 4, 0.8);
 
-        // 座標から擬似乱数を作る（同じ座標なら必ず同じ結果になる）
         function pseudoRandom(x, z) {
             const f = Math.sin(x * 12.9898 + z * 78.233) * 43758.5453123;
             return f - Math.floor(f);
@@ -72,7 +71,6 @@
             const pX = Math.round(camera.position.x / GRID_SIZE);
             const pZ = Math.round(camera.position.z / GRID_SIZE);
 
-            // 周囲の壁を生成
             for (let x = pX - VIEW_DISTANCE; x <= pX + VIEW_DISTANCE; x++) {
                 for (let z = pZ - VIEW_DISTANCE; z <= pZ + VIEW_DISTANCE; z++) {
                     const key = `${x},${z}`;
@@ -85,13 +83,12 @@
                             scene.add(wall);
                             chunks.set(key, wall);
                         } else {
-                            chunks.set(key, null); // 壁がない場所も記録
+                            chunks.set(key, null);
                         }
                     }
                 }
             }
 
-            // 遠すぎるところを削除（メモリ節約）
             for (let [key, wall] of chunks) {
                 const [cx, cz] = key.split(',').map(Number);
                 if (Math.abs(cx - pX) > VIEW_DISTANCE + 2 || Math.abs(cz - pZ) > VIEW_DISTANCE + 2) {
@@ -99,13 +96,11 @@
                     chunks.delete(key);
                 }
             }
-
-            // 床をプレイヤーに追従させる
             floor.position.x = camera.position.x;
             floor.position.z = camera.position.z;
         }
 
-        // --- 操作系 (マルチタッチ・スムージング) ---
+        // --- 操作系 (リバース視点対応) ---
         let moveTouchID = null, lookTouchID = null;
         let moveData = { x: 0, y: 0, startX: 0, startY: 0 };
         let lookData = { lastX: 0, lastY: 0 };
@@ -133,8 +128,13 @@
                     joyKnob.style.transform = `translate(${Math.cos(a)*d}px, ${Math.sin(a)*d}px)`;
                 }
                 if(t.identifier === lookTouchID) {
-                    targetLon += (t.clientX - lookData.lastX) * 0.3;
-                    targetLat -= (t.clientY - lookData.lastY) * 0.3;
+                    const deltaX = t.clientX - lookData.lastX;
+                    const deltaY = t.clientY - lookData.lastY;
+                    
+                    // --- リバース操作の核心 ---
+                    targetLon -= deltaX * 0.3; // 左右反転
+                    targetLat += deltaY * 0.3; // 上下反転
+                    
                     targetLat = Math.max(-85, Math.min(85, targetLat));
                     lookData.lastX = t.clientX; lookData.lastY = t.clientY;
                 }
@@ -164,7 +164,6 @@
                 const step = new THREE.Vector3().addScaledVector(dir, -moveData.y*0.15).addScaledVector(side, -moveData.x*0.15);
                 const nextPos = camera.position.clone().add(step);
                 
-                // 衝突判定：生成された壁のみチェック
                 const pBox = new THREE.Box3().setFromCenterAndSize(nextPos, new THREE.Vector3(0.7, 2, 0.7));
                 let hit = false;
                 for(let wall of chunks.values()) {
